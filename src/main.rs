@@ -28,7 +28,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("got something; {}",str);
 
 
-                handler(&mut socket, &rd, &str);
+                let hf=handler(&socket, &rd, &str);
+                tokio::spawn(hf);
+                //let _=hf.await;
                 // Write the data back
                 /*if let Err(e) = socket.write_all(rd).await {
                     eprintln!("failed to write to socket; err = {:?}", e);
@@ -40,11 +42,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 
-async fn handler(socket: &mut TcpStream, buff: &[u8], str: &str)->Result<(),Box<dyn std::error::Error>>{
-    /*let Err(e)=socket.write_all(buff).await;*/
-    match socket.write_all(buff).await{
-        Err(e)=>{eprintln!("had error {:?}",e);},
-        Ok(_)=>{println!("wrote back succesfully");},
-    }
+async fn handler(socket: &TcpStream, buff: &[u8], str: &str)->Result<()+Send,Box<dyn std::error::Error>>{
+    //println!("handler called; str={}",str);
+    dbg!(&socket,&buff,&str);
+    if let Err(e)=socket.write_all(buff).await{eprintln!("had error {:?}",e);}else{println!("wrote back succesfully");};
+    
     Ok(())
 }
