@@ -1,8 +1,3 @@
-[package]
-name = "rust-http"
-version = "0.1.0"
-edition = "2021"
-authors = ["samicpp"]
-
-[dependencies]
-tokio={ version="*", features = ["full"] }
+[workspace]
+members = [ "rust_http" , "rust_http"]
+resolver = "1"
