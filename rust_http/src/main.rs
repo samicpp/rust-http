@@ -24,7 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Err(err)=hand.update_client().await{
                 eprintln!("client reading error: {:?}",err);
             };
-            dbg!(&hand.client);
+            //dbg!(&hand.client);
             if let Err(err)=hand.close(b"Hello, world").await{
                 eprintln!("client writing error: {:?}",err);
             };

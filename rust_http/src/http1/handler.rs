@@ -52,12 +52,29 @@ impl Http1Socket{
         
         let size = self.read_available()?;
         let slice = &self.buff[..size];
-        let string = match str::from_utf8(slice) { Ok(s)=>s, Err(_)=>"" };
-        let parts = string.split("\r\n\r\n").collect::<Vec<&str>>();
+        // let string = match str::from_utf8(slice) { Ok(s)=>s, Err(_)=>"" };
+        // let parts = string.split("\r\n\r\n").collect::<Vec<&str>>();
 
-        if parts.len()<1 { return Err(io::Error::new(io::ErrorKind::Other, "invalid client data")) };
+        // if parts.len()<1 { return Err(io::Error::new(io::ErrorKind::Other, "invalid client data")) };
 
-        let mut headraw=parts[0].split("\r\n").collect::<Vec<&str>>();
+        let mut head_part=Vec::<u8>::new();
+        let mut body_part=Vec::<u8>::new();
+
+        if let Some(seperator)=slice.windows(4).position(|window| window == b"\r\n\r\n"){
+            let bod_start=seperator+4;
+            head_part.extend_from_slice(&slice[..seperator]);
+            body_part.extend_from_slice(&slice[bod_start..]);
+        } else {
+            head_part.extend_from_slice(&slice);
+        };
+
+        let head_part=head_part;
+        let body_part=body_part;
+
+        let head_string=match str::from_utf8(&head_part){Ok(s)=>s, Err(_)=>""};
+
+
+        let mut headraw=head_string.split("\r\n").collect::<Vec<&str>>();
 
         if headraw.len()<2 { return Err(io::Error::new(io::ErrorKind::Other, "invalid client data")) };
 
@@ -87,7 +104,40 @@ impl Http1Socket{
         }
 
         self.client.body.clear();
-        self.client.body.extend_from_slice( if let Some(bod)=parts.get(1) { bod.as_bytes() } else { eprintln!("no body {:?}",parts); "".as_bytes() } );
+        let body=body_part;//if let Some(bod)=parts.get(1) { bod.as_bytes() } else { eprintln!("no body {:?}",parts); "".as_bytes() };
+        // self.client.body.extend_from_slice(body);
+        if self.client.headers.contains_key("content-length"){
+            self.client.body.extend_from_slice(&body);
+        } else if let Some(v)=self.client.headers.get("transfer-encoding"){
+            let mut i: usize=0; let mut size: usize=0; let mut read: usize=0;
+            let mut hex=String::new(); let mut buff=Vec::<u8>::new();
+            while i<body.len(){
+                if size>read{
+                    buff.push(body[i+read]);
+                    read+=1;
+                    continue;
+                } else if size==read {
+                    i+=size+2;
+                    hex="".to_owned()  ;
+                    read=0;
+                }
+
+                let cur=&body[i];
+
+                if *cur==b'\r'{
+                    if let Ok(nsize)=usize::from_str_radix(&hex, 16){
+                        size=nsize;
+                        i+=1;
+                    } else {
+                        break;
+                    };
+                } else {
+                    hex+=&(cur.to_owned() as char).to_string();
+                }
+                i+=1;
+            }
+            
+        }
 
         self.client.read=true;
 
