@@ -30,9 +30,21 @@ impl Http1Socket{
         tot
     }
     fn read_available(&mut self)->std::io::Result<usize>{
-        let mut buff=Vec::<u8>::new();
-        let r=self.tcp_socket.try_read_buf(&mut buff)?;
-        self.buff.extend_from_slice(&buff);
+        let mut buff=vec![0u8; 1024];
+        let mut r:usize=0;
+        loop{
+            match self.tcp_socket.try_read(&mut buff){
+                Ok(0)=>break,
+                Ok(n)=>{
+                    self.buff.extend_from_slice(&buff[..n]);
+                    r+=n;
+                    buff.clear();
+                },
+                Err(e) if e.kind()==io::ErrorKind::WouldBlock=>break,
+                Err(e)=>return Err(e),
+            };
+        };
+        // self.buff.extend_from_slice(&buff);
         Ok(r)
     }
     pub async fn update_client(&mut self)->std::io::Result<()>{
@@ -75,7 +87,7 @@ impl Http1Socket{
         }
 
         self.client.body.clear();
-        self.client.body.extend_from_slice( if let Some(bod)=parts.get(1) { bod.as_bytes() } else { "".as_bytes() } );
+        self.client.body.extend_from_slice( if let Some(bod)=parts.get(1) { bod.as_bytes() } else { eprintln!("no body {:?}",parts); "".as_bytes() } );
 
         self.client.read=true;
 

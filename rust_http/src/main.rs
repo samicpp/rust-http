@@ -28,6 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Err(err)=hand.close(b"Hello, world").await{
                 eprintln!("client writing error: {:?}",err);
             };
+            println!("client said: {}",str::from_utf8(&hand.client.body).unwrap());
         });
 
         // tokio::spawn(async move {
