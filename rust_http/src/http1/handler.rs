@@ -1,3 +1,4 @@
+// use std::fmt::UpperHex;
 use std::io;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use std::{collections::HashMap};
@@ -154,6 +155,18 @@ impl Http1Socket{
 
         Ok(())
     }
+    async fn write_chunk(&mut self, buff: &[u8])->io::Result<usize>{
+        let mut w: Vec<u8>=Vec::new();
+        let s=format!("{:X}",buff.len());
+        let sep=b"\r\n";
+        let sb=s.as_bytes();
+        w.extend_from_slice(sb);
+        w.extend_from_slice(sep);
+        w.extend_from_slice(buff);
+        w.extend_from_slice(sep);
+        self.tcp_socket.write_all(&w).await?;
+        Ok(w.len())
+    }
 }
 
 impl HttpSocket for Http1Socket{
@@ -223,7 +236,16 @@ impl HttpSocket for Http1Socket{
         Ok(())
     }
     async fn write(&mut self, bytes: &[u8])->std::io::Result<()> {
-        /* placeholder */ Ok(())
+        if bytes.is_empty(){
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "no data provided"))
+        }
+        if !self.head_closed{
+            self.headers.insert("Transfer-Encoding".to_owned(), vec!["chunked".to_owned()]);
+            // self.headers.remove("Content-Length");
+            self.send_head().await?;
+        };
+        self.write_chunk(bytes).await?;
+        Ok(())
     }
     async fn close(&mut self, bytes: &[u8])->io::Result<()>{
         if !self.head_closed{
@@ -231,6 +253,11 @@ impl HttpSocket for Http1Socket{
             self.send_head().await?;
             self.tcp_socket.write_all(bytes).await?;
             self.closed=true;
+        } else {
+            if !bytes.is_empty(){
+                self.write(bytes).await?;
+            }
+            self.tcp_socket.write_all(b"0\r\n\r\n").await?;
         }
         self.tcp_socket.shutdown().await?;
         Ok(())
