@@ -1,5 +1,8 @@
+#[derive(Debug,Clone)]
 pub struct HttpClient{
+    // indicates wether data is default or modified
     pub read: bool,
+    pub info: std::net::SocketAddr,
 
     pub path: String,
     pub method: String,
@@ -7,6 +10,5 @@ pub struct HttpClient{
 
     pub host: String,
     pub headers: std::collections::HashMap<String,Vec<String>>,
-
-    pub info: std::net::SocketAddr,
+    pub body: Vec<u8>,
 }

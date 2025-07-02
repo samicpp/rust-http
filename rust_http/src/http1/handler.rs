@@ -35,7 +35,7 @@ impl Http1Socket{
         self.buff.extend_from_slice(&buff);
         Ok(r)
     }
-    pub fn update_client(&mut self)->std::io::Result<()>{
+    pub async fn update_client(&mut self)->std::io::Result<()>{
         if self.closed { return Err(io::Error::new(io::ErrorKind::ConnectionAborted,"connection isnt open")) };
         
         let size = self.read_available()?;
@@ -60,6 +60,7 @@ impl Http1Socket{
 
         for sheader in headers {
             let harr = sheader.split(": ").collect::<Vec<&str>>();
+            if harr.len()<2 { continue };
             let k=harr[0].to_lowercase(); let v=harr[1];
 
             if let Some(ve)=self.client.headers.get_mut(&k){
@@ -73,6 +74,10 @@ impl Http1Socket{
             }
         }
 
+        self.client.body.clear();
+        self.client.body.extend_from_slice( if let Some(bod)=parts.get(1) { bod.as_bytes() } else { "".as_bytes() } );
+
+        self.client.read=true;
 
         Ok(())
     }
@@ -98,12 +103,14 @@ impl HttpSocket for Http1Socket{
                 version: String::new(),
                 host: String::new(),
                 headers: HashMap::new(),
+                body: Vec::new(),
                 info: addr,
             }
         }
         // s.headers.insert("Connection".to_owned(), vec!["close".to_owned()]);
         // s
     }
+
     fn set_header(&mut self, name: &str, value: &str)->bool{
         if self.head_closed { return false };
         match name.to_lowercase().as_str(){
@@ -123,6 +130,12 @@ impl HttpSocket for Http1Socket{
         if self.head_closed { return None };
         self.headers.remove(name)
     }
+    
+    async fn get_client(&mut self)->io::Result<&HttpClient> {
+        self.update_client().await?;
+        Ok(&self.client)
+    }
+
     async fn send_head(&mut self)->std::io::Result<()>{
         if self.head_closed { return Err(std::io::Error::new(std::io::ErrorKind::Other,"already wrote head")) };
 
@@ -134,6 +147,18 @@ impl HttpSocket for Http1Socket{
         self.tcp_socket.write_all(head.as_bytes()).await?;
 
         self.head_closed=true;
+        Ok(())
+    }
+    async fn write(&mut self, bytes: &[u8])->std::io::Result<()> {
+        /* placeholder */ Ok(())
+    }
+    async fn close(&mut self, bytes: &[u8])->io::Result<()>{
+        if !self.head_closed{
+            self.headers.insert("Content-Length".to_owned(), vec![bytes.len().to_string()]);
+            self.send_head().await?;
+            self.tcp_socket.write_all(bytes).await?;
+            self.closed=true;
+        }
         Ok(())
     }
 }
