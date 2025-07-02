@@ -1,5 +1,6 @@
 use tokio::net::TcpListener;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+// use std::thread;
 
 use crate::traits::HttpSocket;
 
@@ -14,18 +15,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("http://localhost:4096");
 
     loop {
-        let (mut socket, addr) = listener.accept().await?;
-        let mut hand=http1::handler::Http1Socket::new(socket, addr);
+        let (socket, addr) = listener.accept().await?;
 
         println!("client connected");
 
         tokio::spawn(async move {
+            let mut hand=http1::handler::Http1Socket::new(socket, addr);
+            
             // let r=hand.update_client().await;
             if let Err(err)=hand.update_client().await{
                 eprintln!("client reading error: {:?}",err);
             };
             //dbg!(&hand.client);
-            if let Err(err)=hand.close(b"Hello, world").await{
+            if let Err(err)=hand.close(format!("Hello, world at {}",hand.client.path).as_bytes()).await{
                 eprintln!("client writing error: {:?}",err);
             };
             println!("client said: {}",str::from_utf8(&hand.client.body).unwrap());

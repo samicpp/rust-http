@@ -33,7 +33,7 @@ impl Http1Socket{
         let mut buff=[0u8; 1024];
         let mut r:usize=0;
         loop{
-            // self.tcp_socket.readable().await?;
+            self.tcp_socket.readable().await?;
             let res=self.tcp_socket.try_read(&mut buff);
             // dbg!(&res);
             match res{
@@ -232,6 +232,7 @@ impl HttpSocket for Http1Socket{
             self.tcp_socket.write_all(bytes).await?;
             self.closed=true;
         }
+        self.tcp_socket.shutdown().await?;
         Ok(())
     }
 }
