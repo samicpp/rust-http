@@ -1,7 +1,7 @@
 use tokio::net::TcpListener;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+// use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time::{Duration, sleep};
-use std::thread;
+// use std::thread;
 
 use crate::traits::HttpSocket;
 
@@ -12,6 +12,7 @@ pub mod http2;
 pub mod websocket;
 pub mod listener;
 
+#[allow(dead_code)]
 #[tokio::main]
 async fn main_test() -> Result<(), Box<dyn std::error::Error>> {
     let listener = TcpListener::bind("0.0.0.0:4096").await?;
@@ -66,13 +67,13 @@ async fn main_test() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 mod test{
-    use super::*;
+    // use super::*;
 
     #[test]
     #[ignore = "wont end"]
     fn serve_test(){
-        thread::spawn(move||{
-            main_test().unwrap();
+        std::thread::spawn(move||{
+            super::main_test().unwrap();
         }).join().unwrap();
     }
 }

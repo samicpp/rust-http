@@ -1,5 +1,8 @@
 use tokio;
 use crate::client;
+
+
+#[allow(async_fn_in_trait)]
 pub trait HttpSocket{
     fn new(socket: tokio::net::TcpStream, addr: std::net::SocketAddr)->Self;
     

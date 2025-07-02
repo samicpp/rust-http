@@ -1,6 +1,6 @@
 // use std::fmt::UpperHex;
 use std::io;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{/*AsyncReadExt,*/ AsyncWriteExt};
 use std::{collections::HashMap};
 
 use crate::client::HttpClient;
@@ -120,7 +120,7 @@ impl Http1Socket{
         // self.client.body.extend_from_slice(body);
         if self.client.headers.contains_key("content-length"){
             self.client.body.extend_from_slice(&body);
-        } else if let Some(v)=self.client.headers.get("transfer-encoding"){
+        } else if let Some(_)=self.client.headers.get("transfer-encoding"){
             let mut i: usize=0; let mut size: usize=0; let mut read: usize=0;
             let mut hex=String::new(); let mut buff=Vec::<u8>::new();
             while i<body.len(){
