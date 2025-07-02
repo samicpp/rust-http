@@ -1,12 +1,16 @@
 use tokio::net::TcpListener;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+mod client;
+mod http1;
+mod traits;
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = TcpListener::bind("0.0.0.0:4096").await?;
 
     loop {
-        let (mut socket, _) = listener.accept().await?;
+        let (mut socket, _addr) = listener.accept().await?;
 
         tokio::spawn(async move {
             let mut buf = vec![0; 1 * 1024_usize.pow(2)]; // 1 mb
