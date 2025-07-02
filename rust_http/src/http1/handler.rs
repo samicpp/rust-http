@@ -29,16 +29,19 @@ impl Http1Socket{
         }
         tot
     }
-    fn read_available(&mut self)->std::io::Result<usize>{
-        let mut buff=vec![0u8; 1024];
+    async fn read_available(&mut self)->std::io::Result<usize>{
+        let mut buff=[0u8; 1024];
         let mut r:usize=0;
         loop{
-            match self.tcp_socket.try_read(&mut buff){
+            // self.tcp_socket.readable().await?;
+            let res=self.tcp_socket.try_read(&mut buff);
+            // dbg!(&res);
+            match res{
                 Ok(0)=>break,
                 Ok(n)=>{
                     self.buff.extend_from_slice(&buff[..n]);
                     r+=n;
-                    buff.clear();
+                    // buff.clear();
                 },
                 Err(e) if e.kind()==io::ErrorKind::WouldBlock=>break,
                 Err(e)=>return Err(e),
@@ -48,14 +51,15 @@ impl Http1Socket{
         Ok(r)
     }
     pub async fn update_client(&mut self)->std::io::Result<()>{
-        if self.closed { return Err(io::Error::new(io::ErrorKind::ConnectionAborted,"connection isnt open")) };
+        if self.closed { return Err(io::Error::new(io::ErrorKind::ConnectionAborted,"connection isnt open")); };
         
-        let size = self.read_available()?;
-        let slice = &self.buff[..size];
+        let _size = self.read_available().await?;
+        let slice = &self.buff;//[..size];
         // let string = match str::from_utf8(slice) { Ok(s)=>s, Err(_)=>"" };
         // let parts = string.split("\r\n\r\n").collect::<Vec<&str>>();
 
         // if parts.len()<1 { return Err(io::Error::new(io::ErrorKind::Other, "invalid client data")) };
+        if slice.is_empty() { return Err(io::Error::new(io::ErrorKind::InvalidData,"could read client bytes")) }
 
         let mut head_part=Vec::<u8>::new();
         let mut body_part=Vec::<u8>::new();
@@ -75,6 +79,13 @@ impl Http1Socket{
 
 
         let mut headraw=head_string.split("\r\n").collect::<Vec<&str>>();
+
+        // dbg!(self.buff.len());
+        // dbg!(slice.len());
+        // dbg!(head_part.len()); 
+        // dbg!(body_part.len()); 
+        // dbg!(&head_string); 
+        // dbg!(&headraw); 
 
         if headraw.len()<2 { return Err(io::Error::new(io::ErrorKind::Other, "invalid client data")) };
 
