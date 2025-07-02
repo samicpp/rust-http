@@ -1,16 +1,18 @@
 use tokio::net::TcpListener;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time::{Duration, sleep};
-// use std::thread;
+use std::thread;
 
 use crate::traits::HttpSocket;
 
-mod client;
-mod http1;
-mod traits;
+pub mod client;
+pub mod http1;
+pub mod traits;
+pub mod http2;
+pub mod websocket;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main_test() -> Result<(), Box<dyn std::error::Error>> {
     let listener = TcpListener::bind("0.0.0.0:4096").await?;
 
     println!("http://localhost:4096");
@@ -59,5 +61,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         //    
         // });
 
+    }
+}
+
+mod test{
+    use super::*;
+
+    #[test]
+    #[ignore = "wont end"]
+    fn serve_test(){
+        thread::spawn(move||{
+            main_test().unwrap();
+        }).join().unwrap();
     }
 }
