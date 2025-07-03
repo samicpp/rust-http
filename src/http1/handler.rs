@@ -217,9 +217,9 @@ impl HttpSocket for Http1Socket{
         self.headers.remove(name)
     }
     
-    async fn get_client(&mut self)->io::Result<&HttpClient> {
+    async fn get_client(&mut self)->io::Result<HttpClient> {
         self.update_client().await?;
-        Ok(&self.client)
+        Ok(self.client.clone())
     }
 
     async fn send_head(&mut self)->std::io::Result<()>{

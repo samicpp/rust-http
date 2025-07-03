@@ -9,7 +9,7 @@ pub trait HttpSocket{
     fn set_header(&mut self, name: &str, value: &str)->bool;
     fn remove_header(&mut self, name: &str)->Option<Vec<String>>;
     
-    async fn get_client(&mut self)->std::io::Result<&client::HttpClient>;
+    async fn get_client(&mut self)->std::io::Result<client::HttpClient>;
 
     async fn send_head(&mut self)->std::io::Result<()>;
     async fn close(&mut self, bytes: &[u8])->std::io::Result<()>;
