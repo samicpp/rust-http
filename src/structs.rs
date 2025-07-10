@@ -12,3 +12,9 @@ pub struct HttpClient{
     pub headers: std::collections::HashMap<String,Vec<String>>,
     pub body: Vec<u8>,
 }
+
+#[derive(Debug,Clone)]
+pub enum Compression{
+    Plain,
+    Gzip,
+}

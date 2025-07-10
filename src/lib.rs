@@ -5,7 +5,7 @@ use tokio::time::{Duration, sleep};
 
 use crate::traits::HttpSocket;
 
-pub mod client;
+pub mod structs;
 pub mod http1;
 pub mod traits;
 pub mod http2;
