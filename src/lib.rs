@@ -27,7 +27,7 @@ async fn main_test() -> Result<(), Box<dyn std::error::Error>> {
         tokio::spawn(async move {
             let mut hand=http1::handler::Http1Socket::new(socket, addr);
             
-            hand.set_header("Content-Type", "text/html");
+            let _=hand.set_header("Content-Type", "text/html");
             // let r=hand.update_client().await;
             if let Err(err)=hand.update_client().await{
                 eprintln!("client reading error: {:?}",err);
