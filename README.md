@@ -8,6 +8,6 @@ HTTP framework in rust
 3. [ ] remove `fn new()` from trait `HttpSocket`
 4. [ ] implement HTTP/2
 5. [ ] implement WebSocket
-6. [ ] 
+6. [ ] refactoring of traits structs and enums
 
 
