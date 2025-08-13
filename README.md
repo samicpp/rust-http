@@ -1,2 +1,13 @@
 # rust-http
 HTTP framework in rust
+
+
+## TODO
+1. [ ] Custom Result enums instead of using std:\:io::result
+2. [ ] make stream argument type work for tls, tcp, udp
+3. [ ] remove `fn new()` from trait `HttpSocket`
+4. [ ] implement HTTP/2
+5. [ ] implement WebSocket
+7. [ ] 
+
+
