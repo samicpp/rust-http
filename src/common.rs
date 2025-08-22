@@ -1,5 +1,6 @@
 use tokio::net;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, /*AsyncWriteExt*/};
+use std::collections::HashMap;
 // use crate::structs;
 use std::io;
 use std::fmt;
@@ -35,6 +36,36 @@ pub struct HttpClient{
     pub host: String,
     pub headers: std::collections::HashMap<String,Vec<String>>,
     pub body: Vec<u8>,
+}
+
+impl HttpClient{
+    pub fn empty()->Self{
+        Self {
+            read: false,
+            info: std::net::SocketAddr::V4(std::net::SocketAddrV4::new(std::net::Ipv4Addr::new(0,0,0,0),0)),
+            path: String::new(),
+            method: String::new(),
+            version: String::new(),
+            host: String::new(),
+            headers: HashMap::new(),
+            body: Vec::new(),
+        }
+    }
+}
+
+impl Default for HttpClient{
+    fn default() -> Self {
+        Self {
+            read: false,
+            info: std::net::SocketAddr::V4(std::net::SocketAddrV4::new(std::net::Ipv4Addr::new(0,0,0,0),0)),
+            path: "/".to_owned(),
+            method: "NILL".to_owned(),
+            version: String::new(),
+            host: "about:blank".to_owned(),
+            headers: HashMap::new(),
+            body: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug,Clone)]

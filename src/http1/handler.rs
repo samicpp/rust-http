@@ -197,14 +197,8 @@ impl<S:Stream> HttpSocket<S> for Http1Socket<S>{
             status_msg: "OK".to_owned(),
 
             client: HttpClient {
-                read: false,
-                path: String::new(),
-                method: String::new(),
-                version: String::new(),
-                host: String::new(),
-                headers: HashMap::new(),
-                body: Vec::new(),
                 info: addr,
+                ..Default::default()
             }
         }
         // s.headers.insert("Connection".to_owned(), vec!["close".to_owned()]);
