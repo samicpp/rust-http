@@ -1,14 +1,15 @@
-use tokio;
+use tokio::net;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 // use crate::structs;
 use std::io;
 use std::fmt;
 
 
-// Http
+// # Http
 
 #[allow(async_fn_in_trait)]
-pub trait HttpSocket{
-    fn new(socket: tokio::net::TcpStream, addr: std::net::SocketAddr)->Self;
+pub trait HttpSocket<S:Stream>{
+    fn new(socket: S, addr: std::net::SocketAddr)->Self;
     
     fn set_header(&mut self, name: &str, value: &str)->HttpResult<()>;
     fn remove_header(&mut self, name: &str)->HttpResult<Vec<String>>;
@@ -42,7 +43,33 @@ pub enum Compression{
     Gzip,
 }
 
-// Errors
+// ## Generic streams
+// #[allow(async_fn_in_trait)]
+// pub trait NetStream{
+//     async fn readable(&self) -> io::Result<()>;
+//     fn try_read(&self, buf: &mut [u8]) -> io::Result<usize>;
+//     async fn write_all<'a>(&'a mut self, src: &'a [u8]) -> io::Result<()>;
+// }
+#[allow(async_fn_in_trait)]
+pub trait Stream:AsyncRead+AsyncWrite+Unpin+Send{
+    async fn read_all(&mut self)->io::Result<Vec<u8>>{
+        let mut buf=[0u8; 4096];
+        let mut total = Vec::new();
+        loop{
+            let n=self.read(&mut buf).await?;
+            if n==0{ break };
+            total.extend_from_slice(&buf[..n]);
+            if n<buf.len(){
+                break
+            }
+        }
+        Ok(total)
+    }
+}
+
+impl Stream for net::TcpStream{}
+
+// # Errors
 
 pub type HttpResult<T> = Result<T,HttpError>;
 

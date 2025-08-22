@@ -1,6 +1,6 @@
 // use std::fmt::UpperHex;
 use std::io;
-use tokio::io::{/*AsyncReadExt,*/ AsyncWriteExt};
+use tokio::{io::AsyncWriteExt, net::TcpSocket};
 use std::{collections::HashMap};
 use async_compression::tokio::write::GzipEncoder;
 
@@ -10,16 +10,17 @@ use crate::common::{
     HttpSocket,
     HttpError,
     HttpResult,
+    Stream,
 };
 // use crate::common::HttpSocket;
 
-pub struct Http1Socket{
+pub struct Http1Socket<S:Stream>{
     closed: bool,
     head_closed: bool,
 
     buff: Vec<u8>,
     headers: HashMap<String,Vec<String>>,
-    tcp_socket: tokio::net::TcpStream,
+    socket: S,
     compression: Compression,
 
     pub status: u16,
@@ -28,7 +29,7 @@ pub struct Http1Socket{
     pub client: HttpClient,
 }
 
-impl Http1Socket{
+impl<S:Stream> Http1Socket<S>{
     fn get_headers_as_string(&self)->String{
         let mut tot=String::new();
         for(h,ve)in &self.headers{
@@ -38,12 +39,12 @@ impl Http1Socket{
         }
         tot
     }
-    async fn read_available(&mut self)->std::io::Result<usize>{
+    /*async fn read_available(&mut self)->std::io::Result<usize>{
         let mut buff=[0u8; 1024];
         let mut r:usize=0;
         loop{
-            self.tcp_socket.readable().await?;
-            let res=self.tcp_socket.try_read(&mut buff);
+            self.socket.readable().await?;
+            let res=self.socket.try_read(&mut buff);
             // dbg!(&res);
             match res{
                 Ok(0)=>break,
@@ -58,11 +59,14 @@ impl Http1Socket{
         };
         // self.buff.extend_from_slice(&buff);
         Ok(r)
+    }*/
+    async fn read_new(&mut self)->io::Result<Vec<u8>>{
+        self.socket.read_all().await
     }
     pub async fn update_client(&mut self)->std::io::Result<()>{
         if self.closed { return Err(io::Error::new(io::ErrorKind::ConnectionAborted,"connection isnt open")); };
         
-        let _size = self.read_available().await?;
+        let _size = self.read_new().await?;
         let slice = &self.buff;//[..size];
         // let string = match str::from_utf8(slice) { Ok(s)=>s, Err(_)=>"" };
         // let parts = string.split("\r\n\r\n").collect::<Vec<&str>>();
@@ -172,19 +176,19 @@ impl Http1Socket{
         w.extend_from_slice(sep);
         w.extend_from_slice(buff);
         w.extend_from_slice(sep);
-        self.tcp_socket.write_all(&w).await?;
+        self.socket.write_all(&w).await?;
         Ok(w.len())
     }
     fn _get_compression(&self)->Compression{ self.compression.clone() }
 }
 
-impl HttpSocket for Http1Socket{
-    fn new(socket: tokio::net::TcpStream, addr: std::net::SocketAddr)->Self{
+impl<S:Stream> HttpSocket<S> for Http1Socket<S>{
+    fn new(socket: S, addr: std::net::SocketAddr)->Self{
         /*let mut s=*/ Self { 
             closed: false,
             head_closed: false,
 
-            tcp_socket: socket, 
+            socket: socket, 
             buff: vec![0_u8; 0], 
             headers: HashMap::new(), 
             compression: Compression::Gzip,
@@ -252,7 +256,7 @@ impl HttpSocket for Http1Socket{
         let headers = self.get_headers_as_string();
         let head = format!("HTTP/1.1 {} {}\r\n{}\r\n",self.status,&self.status_msg,headers);
 
-        self.tcp_socket.write_all(head.as_bytes()).await?;
+        self.socket.write_all(head.as_bytes()).await?;
 
         self.head_closed=true;
         Ok(())
@@ -275,7 +279,7 @@ impl HttpSocket for Http1Socket{
                 Compression::Plain=>{
                     self.headers.insert("Content-Length".to_owned(), vec![bytes.len().to_string()]);
                     self.send_head().await?;
-                    self.tcp_socket.write_all(bytes).await?;
+                    self.socket.write_all(bytes).await?;
                     self.closed=true;
                 },
                 Compression::Gzip=>{
@@ -286,7 +290,7 @@ impl HttpSocket for Http1Socket{
                     enc.write_all(bytes).await?;
                     enc.shutdown().await?;
                     let inner = enc.get_ref();
-                    self.tcp_socket.write_all(inner).await?;
+                    self.socket.write_all(inner).await?;
                     self.closed=true;
                 },
             }
@@ -294,9 +298,9 @@ impl HttpSocket for Http1Socket{
             if !bytes.is_empty(){
                 self.write(bytes).await?;
             }
-            self.tcp_socket.write_all(b"0\r\n\r\n").await?;
+            self.socket.write_all(b"0\r\n\r\n").await?;
         }
-        self.tcp_socket.shutdown().await?;
+        self.socket.shutdown().await?;
         Ok(())
     }
 }
