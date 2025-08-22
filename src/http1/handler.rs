@@ -237,9 +237,13 @@ impl<S:Stream> HttpSocket<S> for Http1Socket<S>{
         }
     }
 
-    async fn get_client(&mut self)->HttpResult<HttpClient> {
+    async  fn read_client(&mut self)->HttpResult<&HttpClient> {
         self.update_client().await?;
-        Ok(self.client.clone())
+        Ok(&self.client)
+    }
+    async fn get_client(&mut self)->HttpResult<&HttpClient> {
+        // self.update_client().await?;
+        Ok(&self.client)
     }
 
     async fn send_head(&mut self)->HttpResult<()>{
