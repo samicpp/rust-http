@@ -60,8 +60,10 @@ impl<S:Stream> Http1Socket<S>{
         // self.buff.extend_from_slice(&buff);
         Ok(r)
     }*/
-    async fn read_new(&mut self)->io::Result<Vec<u8>>{
-        self.socket.read_all().await
+    async fn read_new(&mut self)->io::Result<usize>{
+        let read=self.socket.read_all().await?;
+        self.buff.extend_from_slice(&read);
+        Ok(read.len())
     }
     pub async fn update_client(&mut self)->std::io::Result<()>{
         if self.closed { return Err(io::Error::new(io::ErrorKind::ConnectionAborted,"connection isnt open")); };
