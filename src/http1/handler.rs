@@ -236,6 +236,11 @@ impl<S:Stream> HttpSocket<S> for Http1Socket<S>{
             Err(HttpError::HeadersSent)
         }
     }
+    fn set_status(&mut self, status: u16, msg: String)->HttpResult<()> {
+        self.status=status;
+        self.status_msg=msg;
+        Ok(())
+    }
 
     async  fn read_client(&mut self)->HttpResult<&HttpClient> {
         self.update_client().await?;

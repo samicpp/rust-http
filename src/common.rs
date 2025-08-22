@@ -15,6 +15,7 @@ pub trait HttpSocket<S:Stream>{
     fn set_header(&mut self, name: &str, value: &str)->HttpResult<()>;
     fn remove_header(&mut self, name: &str)->HttpResult<Vec<String>>;
     fn set_compression(&mut self, new_compression: Compression)->HttpResult<()>;
+    fn set_status(&mut self, status: u16, msg: String)->HttpResult<()>;
     
     async fn read_client<'a>(&'a mut self)->HttpResult<&'a HttpClient>;
     async fn get_client<'a>(&'a mut self)->HttpResult<&'a HttpClient>;
