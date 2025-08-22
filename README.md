@@ -9,5 +9,5 @@ HTTP framework in rust
 4. [ ] implement HTTP/2
 5. [ ] implement WebSocket
 6. [x] refactoring of traits structs and enums
-
+7. [ ] make a stream trait to make socket structs generic
 
