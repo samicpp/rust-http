@@ -1,6 +1,6 @@
 use std::io;
 use std::future::Future;
-use crate::{traits::HttpSocket};
+use crate::{common::HttpSocket};
 
 use tokio::net::TcpListener;
 // use tokio::io::{AsyncReadExt, AsyncWriteExt};

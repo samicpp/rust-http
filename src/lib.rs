@@ -3,14 +3,15 @@ use tokio::net::TcpListener;
 use tokio::time::{Duration, sleep};
 // use std::thread;
 
-use crate::traits::HttpSocket;
+use crate::common::HttpSocket;
 
-pub mod structs;
+// pub mod structs;
+// pub mod traits;
 pub mod http1;
-pub mod traits;
 pub mod http2;
 pub mod websocket;
 pub mod listener;
+pub mod common;
 
 #[allow(dead_code)]
 #[tokio::main]

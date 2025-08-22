@@ -4,8 +4,14 @@ use tokio::io::{/*AsyncReadExt,*/ AsyncWriteExt};
 use std::{collections::HashMap};
 use async_compression::tokio::write::GzipEncoder;
 
-use crate::structs::{ HttpClient, Compression };
-use crate::traits::HttpSocket;
+use crate::common::{ 
+    HttpClient, 
+    Compression, 
+    HttpSocket,
+    HttpError,
+    HttpResult,
+};
+// use crate::common::HttpSocket;
 
 pub struct Http1Socket{
     closed: bool,
@@ -201,11 +207,11 @@ impl HttpSocket for Http1Socket{
         // s
     }
 
-    fn set_header(&mut self, name: &str, value: &str)->io::Result<()>{
-        if self.head_closed { return Err(io::Error::new(io::ErrorKind::Unsupported, "head already written, encoding already set")) };
+    fn set_header(&mut self, name: &str, value: &str)->HttpResult<()>{
+        if self.head_closed { return Err(HttpError::HeadersSent) };
         match name.to_lowercase().as_str(){
             "connection" | "content-length" | "transfer-encoding" => {
-                return Err(io::Error::new(io::ErrorKind::PermissionDenied, "this header should not be written"))
+                return Err(HttpError::InvalidHeader)
             },
             _ => (),
         };
@@ -216,26 +222,30 @@ impl HttpSocket for Http1Socket{
         };
         Ok(())
     }
-    fn remove_header(&mut self, name: &str)->Option<Vec<String>>{
-        if self.head_closed { return None };
-        self.headers.remove(name)
+    fn remove_header(&mut self, name: &str)->HttpResult<Vec<String>>{
+        if self.head_closed { return Err(HttpError::HeadersSent) };
+        if let Some(removed)=self.headers.remove(name){
+            Ok(removed)
+        } else {
+            Err(HttpError::InvalidHeader)
+        }
     }
-    fn set_compression(&mut self, new_compression: Compression)->io::Result<()>{ 
+    fn set_compression(&mut self, new_compression: Compression)->HttpResult<()>{ 
         if !self.head_closed{
             self.compression = new_compression; 
             Ok(())
         } else {
-            Err(io::Error::new(io::ErrorKind::Unsupported, "head already written, encoding already set"))
+            Err(HttpError::HeadersSent)
         }
     }
 
-    async fn get_client(&mut self)->io::Result<HttpClient> {
+    async fn get_client(&mut self)->HttpResult<HttpClient> {
         self.update_client().await?;
         Ok(self.client.clone())
     }
 
-    async fn send_head(&mut self)->std::io::Result<()>{
-        if self.head_closed { return Err(std::io::Error::new(std::io::ErrorKind::Other,"already wrote head")) };
+    async fn send_head(&mut self)->HttpResult<()>{
+        if self.head_closed { return Err(HttpError::HeadersSent) };
 
         self.headers.insert("Connection".to_owned(), vec!["close".to_owned()]);
         
@@ -247,9 +257,9 @@ impl HttpSocket for Http1Socket{
         self.head_closed=true;
         Ok(())
     }
-    async fn write(&mut self, bytes: &[u8])->std::io::Result<()> {
+    async fn write(&mut self, bytes: &[u8])->HttpResult<()> {
         if bytes.is_empty(){
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "no data provided"))
+            return Err(HttpError::Invalid)
         }
         if !self.head_closed{
             self.headers.insert("Transfer-Encoding".to_owned(), vec!["chunked".to_owned()]);
@@ -259,7 +269,7 @@ impl HttpSocket for Http1Socket{
         self.write_chunk(bytes).await?;
         Ok(())
     }
-    async fn close(&mut self, bytes: &[u8])->io::Result<()>{
+    async fn close(&mut self, bytes: &[u8])->HttpResult<()>{
         if !self.head_closed{
             match self.compression{
                 Compression::Plain=>{
@@ -290,3 +300,4 @@ impl HttpSocket for Http1Socket{
         Ok(())
     }
 }
+
