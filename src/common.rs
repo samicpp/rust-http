@@ -4,11 +4,12 @@ use std::collections::HashMap;
 // use crate::structs;
 use std::io;
 use std::fmt;
+// use std::pin::Pin;
 
 
 // # Http
 
-#[allow(async_fn_in_trait)]
+// #[allow(async_fn_in_trait)]
 pub trait HttpSocket{
     // fn new(socket: S, addr: std::net::SocketAddr)->Self;
     
@@ -17,13 +18,15 @@ pub trait HttpSocket{
     fn set_compression(&mut self, new_compression: Compression)->HttpResult<()>;
     fn set_status(&mut self, status: u16, msg: String)->HttpResult<()>;
     
-    async fn read_client<'a>(&'a mut self)->HttpResult<&'a HttpClient>;
-    async fn get_client<'a>(&'a mut self)->HttpResult<&'a HttpClient>;
+    fn read_client<'_a>(&'_a mut self)->impl Future<Output = Result<&'_a HttpClient, HttpError>>;
+    fn get_client<'_a>(&'_a mut self)->impl Future<Output = Result<&'_a HttpClient, HttpError>>;
 
-    async fn send_head(&mut self)->HttpResult<()>;
-    async fn close(&mut self, bytes: &[u8])->HttpResult<()>;
-    async fn write(&mut self, bytes: &[u8])->HttpResult<()>;
+    fn send_head(&mut self)->impl Future<Output = HttpResult<()>>;
+    fn close(&mut self, bytes: &[u8])->impl Future<Output = HttpResult<()>>;
+    fn write(&mut self, bytes: &[u8])->impl Future<Output = HttpResult<()>>;
 }
+
+// type DynSocket=Box<dyn HttpSocket>;
 
 pub trait HttpConstructor<S:Stream>{
     fn new(socket: S, addr: std::net::SocketAddr)->Self;
@@ -87,8 +90,15 @@ pub enum Compression{
 //     fn try_read(&self, buf: &mut [u8]) -> io::Result<usize>;
 //     async fn write_all<'a>(&'a mut self, src: &'a [u8]) -> io::Result<()>;
 // }
-#[allow(async_fn_in_trait)]
+// #[allow(async_fn_in_trait)]
 pub trait Stream:AsyncRead+AsyncWrite+Unpin+Send{
+    fn read_all(&mut self)->impl Future<Output = io::Result<Vec<u8>>>;
+}
+
+impl<T> Stream for T
+where
+    T: AsyncRead + AsyncWrite + Unpin + Send,
+{
     async fn read_all(&mut self)->io::Result<Vec<u8>>{
         let mut buf=[0u8; 4096];
         let mut total = Vec::new();
@@ -103,11 +113,6 @@ pub trait Stream:AsyncRead+AsyncWrite+Unpin+Send{
         Ok(total)
     }
 }
-
-impl<T> Stream for T
-where
-    T: AsyncRead + AsyncWrite + Unpin + Send,
-{}
 // impl Stream for net::TcpStream{}
 
 // # Errors
