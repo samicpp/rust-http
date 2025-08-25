@@ -1,4 +1,4 @@
-use tokio::net;
+// use tokio::net;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, /*AsyncWriteExt*/};
 use std::collections::HashMap;
 // use crate::structs;
@@ -100,7 +100,11 @@ pub trait Stream:AsyncRead+AsyncWrite+Unpin+Send{
     }
 }
 
-impl Stream for net::TcpStream{}
+impl<T> Stream for T
+where
+    T: AsyncRead + AsyncWrite + Unpin + Send,
+{}
+// impl Stream for net::TcpStream{}
 
 // # Errors
 
