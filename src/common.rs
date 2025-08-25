@@ -9,8 +9,8 @@ use std::fmt;
 // # Http
 
 #[allow(async_fn_in_trait)]
-pub trait HttpSocket<S:Stream>{
-    fn new(socket: S, addr: std::net::SocketAddr)->Self;
+pub trait HttpSocket{
+    // fn new(socket: S, addr: std::net::SocketAddr)->Self;
     
     fn set_header(&mut self, name: &str, value: &str)->HttpResult<()>;
     fn remove_header(&mut self, name: &str)->HttpResult<Vec<String>>;
@@ -23,6 +23,10 @@ pub trait HttpSocket<S:Stream>{
     async fn send_head(&mut self)->HttpResult<()>;
     async fn close(&mut self, bytes: &[u8])->HttpResult<()>;
     async fn write(&mut self, bytes: &[u8])->HttpResult<()>;
+}
+
+pub trait HttpConstructor<S:Stream>{
+    fn new(socket: S, addr: std::net::SocketAddr)->Self;
 }
 
 #[derive(Debug,Clone)]

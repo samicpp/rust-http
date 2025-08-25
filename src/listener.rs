@@ -1,6 +1,6 @@
 use std::{io};
 use std::future::Future;
-use crate::common::{HttpSocket, /*Stream*/};
+use crate::common::{HttpConstructor, HttpSocket /*Stream*/};
 // use crate::http1::handler::Http1Socket;
 
 use tokio::net::{TcpListener, TcpStream};
@@ -9,7 +9,7 @@ use tokio::net::{TcpListener, TcpStream};
 #[allow(unreachable_code)]
 pub async fn http_listener<F, S, Fut>(address: &str, listener: F)->io::Result<()>
 where F: Fn(S)->Fut + Send + Clone + Sync + 'static,
-    S: HttpSocket<TcpStream>,
+    S: HttpSocket+HttpConstructor<TcpStream>,
     Fut: Future<Output = ()> + Send + 'static
 {
     let server = TcpListener::bind(address).await?;

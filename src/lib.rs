@@ -4,6 +4,7 @@ use tokio::time::{Duration, sleep};
 // use std::thread;
 
 use crate::common::HttpSocket;
+use crate::common::HttpConstructor;
 
 // pub mod structs;
 // pub mod traits;

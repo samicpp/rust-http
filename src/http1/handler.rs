@@ -8,6 +8,7 @@ use crate::common::{
     HttpClient, 
     Compression, 
     HttpSocket,
+    HttpConstructor,
     HttpError,
     HttpResult,
     Stream,
@@ -184,29 +185,7 @@ impl<S:Stream> Http1Socket<S>{
     fn _get_compression(&self)->Compression{ self.compression.clone() }
 }
 
-impl<S:Stream> HttpSocket<S> for Http1Socket<S>{
-    fn new(socket: S, addr: std::net::SocketAddr)->Self{
-        /*let mut s=*/ Self { 
-            closed: false,
-            head_closed: false,
-
-            socket: socket, 
-            buff: vec![0_u8; 0], 
-            headers: HashMap::new(), 
-            compression: Compression::Gzip,
-
-            status: 200,
-            status_msg: "OK".to_owned(),
-
-            client: HttpClient {
-                info: addr,
-                ..Default::default()
-            }
-        }
-        // s.headers.insert("Connection".to_owned(), vec!["close".to_owned()]);
-        // s
-    }
-
+impl<S:Stream> HttpSocket for Http1Socket<S>{
     fn set_header(&mut self, name: &str, value: &str)->HttpResult<()>{
         if self.head_closed { return Err(HttpError::HeadersSent) };
         match name.to_lowercase().as_str(){
@@ -310,3 +289,26 @@ impl<S:Stream> HttpSocket<S> for Http1Socket<S>{
     }
 }
 
+impl<S:Stream> HttpConstructor<S> for Http1Socket<S>{
+    fn new(socket: S, addr: std::net::SocketAddr)->Self{
+        /*let mut s=*/ Self { 
+            closed: false,
+            head_closed: false,
+
+            socket: socket, 
+            buff: vec![0_u8; 0], 
+            headers: HashMap::new(), 
+            compression: Compression::Gzip,
+
+            status: 200,
+            status_msg: "OK".to_owned(),
+
+            client: HttpClient {
+                info: addr,
+                ..Default::default()
+            }
+        }
+        // s.headers.insert("Connection".to_owned(), vec!["close".to_owned()]);
+        // s
+    }
+}
