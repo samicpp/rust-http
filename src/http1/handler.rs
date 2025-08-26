@@ -267,13 +267,13 @@ impl<S:Stream> HttpSocket for Http1Socket<S>{
                     self.closed=true;
                 },
                 Compression::Gzip=>{
-                    self.headers.insert("Content-Length".to_owned(), vec![bytes.len().to_string()]);
                     self.headers.insert("Content-Encoding".to_owned(), vec!["gzip".to_owned()]);
                     self.send_head().await?;
                     let mut enc=GzipEncoder::new(Vec::new());
                     enc.write_all(bytes).await?;
                     enc.shutdown().await?;
                     let inner = enc.get_ref();
+                    self.headers.insert("Content-Length".to_owned(), vec![inner.len().to_string()]);
                     self.socket.write_all(inner).await?;
                     self.closed=true;
                 },

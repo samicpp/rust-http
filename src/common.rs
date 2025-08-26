@@ -10,7 +10,7 @@ use std::fmt;
 // # Http
 
 // #[allow(async_fn_in_trait)]
-pub trait HttpSocket{
+pub trait HttpSocket:Send+Sync{
     // fn new(socket: S, addr: std::net::SocketAddr)->Self;
     
     fn set_header(&mut self, name: &str, value: &str)->HttpResult<()>;
@@ -91,13 +91,13 @@ pub enum Compression{
 //     async fn write_all<'a>(&'a mut self, src: &'a [u8]) -> io::Result<()>;
 // }
 // #[allow(async_fn_in_trait)]
-pub trait Stream:AsyncRead+AsyncWrite+Unpin+Send{
+pub trait Stream:AsyncRead+AsyncWrite+Unpin+Send+Sync{
     fn read_all(&mut self)->impl Future<Output = io::Result<Vec<u8>>>;
 }
 
 impl<T> Stream for T
 where
-    T: AsyncRead + AsyncWrite + Unpin + Send,
+    T: AsyncRead + AsyncWrite + Unpin + Send + Sync,
 {
     async fn read_all(&mut self)->io::Result<Vec<u8>>{
         let mut buf=[0u8; 4096];
