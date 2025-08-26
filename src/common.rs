@@ -77,7 +77,7 @@ impl Default for HttpClient{
     }
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug,Clone,Copy)]
 pub enum Compression{
     Plain,
     Gzip,
