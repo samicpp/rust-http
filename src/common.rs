@@ -1,6 +1,7 @@
 // use tokio::net;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, /*AsyncWriteExt*/};
 use std::collections::HashMap;
+// use std::fmt::write;
 // use crate::structs;
 use std::io;
 use std::fmt;
@@ -128,6 +129,10 @@ pub enum HttpError{
     InvalidHeader,
 
     Invalid,
+
+    InvalidFrame,
+    FrameTooBig,
+    FrameTooSmall,
 }
 
 impl fmt::Display for HttpError{
@@ -138,6 +143,9 @@ impl fmt::Display for HttpError{
             Self::HeadersSent=>write!(f,"Headers already sent"),
             Self::InvalidHeader=>write!(f,"Cannot use this header"),
             Self::Invalid=>write!(f,"Invalid invocation"),
+            Self::InvalidFrame=>write!(f, "Invalid frame"),
+            Self::FrameTooBig=>write!(f, "Frame payload too big"),
+            Self::FrameTooSmall=>write!(f, "Frame head too small"),
         }
     }
 }

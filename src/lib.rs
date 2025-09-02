@@ -68,12 +68,71 @@ async fn main_test() -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
+#[cfg(test)]
 mod test{
-    // use super::*;
+    use super::*;
+    //use crate::http2;
+
+    #[test]
+    fn frame_read_test(){
+        let frame_data: Vec<u8>=vec![0,0,11 , 0,0 , 0,0,0,1 , 104,101,108,108,111,32,119,111,114,108,100];
+        // let frame=http2::Http2Frame::parse(frame_data.clone());
+        match http2::Http2Frame::parse(frame_data.clone()){
+            None=>panic!("test failed"),
+            Some(frame)=>{
+                // let mut all=true;
+                println!("\x1b[36mframe dump\x1b[0m");
+                dbg!(&frame);
+                
+                assert!(frame.length==11,"incorrect length");
+                assert!(frame.payload.len()==11,"incorrect payload length");
+                
+                assert!(frame.stream_id==1,"incorrect stream id");
+                
+                assert!(frame.ftype==http2::Http2FrameType::Data,"incorrect frame type");
+                assert!(frame.type_int==0,"incorrect type int");
+
+                assert!(frame.flags_int==0,"incorrect flags int");
+                assert!(
+                    !(frame.flags.acknowledge&&frame.flags.end_headers&&frame.flags.end_stream&&frame.flags.padded&&frame.flags.priority),
+                    "incorrect frame flags"
+                );
+
+                assert!(frame.pad_length==0,"incorrect padding length");
+                assert!(frame.padding.len()==0,"incorrect padding");
+
+                assert!(str::from_utf8(frame.get_payload()).expect("could parse payload")=="hello world","invalid payload data");
+            },
+        }
+    }
+    
+    #[test]
+    fn create_frame_test(){
+        let expected: Vec<u8> = vec![0,0,11 , 0,0 , 0,0,0,1 , 104,101,108,108,111,32,119,111,114,108,100];
+        let frame=http2::create::raw_frame(1, 0, 0, "hello world".as_bytes(), &[]).expect("failed to create frame");
+        let matching=frame.iter().zip(&expected).map(|(a,b)|a==b).count();
+        
+        println!("\x1b[35mframe dump\x1b[0m");
+        dbg!(&frame);
+
+        assert!(matching==expected.len(),"frame has a different length");
+    }
+
+    #[test]
+    fn create_frame_from_frame_test(){
+        let source: Vec<u8> = vec![0,0,11 , 0,0 , 0,0,0,1 , 104,101,108,108,111,32,119,111,114,108,100];
+        let frame = http2::Http2Frame::parse(source.clone()).expect("couldnt parse");
+        let back = http2::create::from_frame(frame).expect("could convert frame to buffer");
+
+        let tot=back.iter().zip(&source).map(|(a,b)|a==b).count();
+        assert!(tot==source.len(),"back different length than source");
+    }
+
+
 
     #[test]
     #[ignore = "wont end"]
-    fn serve_test(){
+    fn http1_serve_test(){
         std::thread::spawn(move||{
             super::main_test().unwrap();
         }).join().unwrap();

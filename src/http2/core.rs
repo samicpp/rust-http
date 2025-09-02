@@ -23,7 +23,7 @@ pub struct Http2Frame{
 }
 
 // 11.2 #iana-frames #autoid-88
-#[derive(Debug,Clone,Copy)]
+#[derive(Debug,Clone,Copy,PartialEq)]
 pub enum Http2FrameType{
     Data,          // 0x0 Section 6.1  |
     Headers,       // 0x1 Section 6.2  |
