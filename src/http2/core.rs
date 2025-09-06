@@ -1,6 +1,6 @@
 // https://httpwg.org/specs/rfc7540.html
 // https://datatracker.ietf.org/doc/html/rfc7540
-use std::{ops::Range};
+use std::{ops::Range, u32};
 
 
 // 4.1 #FrameHeader #autoid-13
@@ -20,6 +20,8 @@ pub struct Http2Frame{
 
     pub pad_length: u8,
     pub padding: Range<usize>,
+
+    pub settings: Option<Http2FrameSettings>,
 }
 
 // 11.2 #iana-frames #autoid-88
@@ -49,6 +51,17 @@ pub struct Http2FrameFlags{
     pub priority: bool,    // 0x20  |  Headers
 }
 
+// 6.5 #SETTINGS #section-6.1
+#[derive(Debug,Clone,Copy)]
+pub struct Http2FrameSettings{
+    pub header_table_size: Option<u32>,       // both    |  4,096     |  u32
+    pub enable_push: Option<u32>,             // client  |  1         |  1 or 0
+    pub max_concurrent_streams: Option<u32>,  // both    |  no limit  |  i32
+    pub initial_window_size: Option<u32>,     // both    |  65,535    |  <2^31-1
+    pub max_frame_size: Option<u32>,          // both    |  16,384    |  <16,777,215
+    pub max_header_list_size: Option<u32>,    // both    |  no limit  |  u32
+}
+
 impl Http2Frame{
     pub fn get_payload<'a>(&'a self)->&'a [u8]{
         &self.raw[self.payload.clone()]
@@ -69,10 +82,11 @@ impl Http2Frame{
             flags_int: 0b00000000, 
             pad_length: 0, 
             padding: 0..0, 
+            settings: None,
         }
     }
 
-    pub fn parse(buff: Vec<u8>)->Option<Self>{
+    pub fn parse(buff: Vec<u8>)->Option<(Self,Vec<u8>)>{
         if buff.len()<9 { return None };
 
         let length: u32 = (buff[0] as u32) << 16 | (buff[1] as u32) << 8 | (buff[2] as u32);
@@ -119,7 +133,14 @@ impl Http2Frame{
             Range{ start: padding_start, end: padding_end }
         } else { 0..0 };
 
-        Some(Self {
+        let settings=if ftype==Http2FrameType::Settings{Http2FrameSettings::parse(&buff[payload.clone()])}else{None};
+
+        let mut buff=buff;
+        let flen=9+length+pad_length as u32+if pad_length!=0{1}else{0};
+        let flen=flen as usize;
+        let remain=buff.split_off(flen);
+
+        Some((Self {
             raw: buff,
             length,
             type_int,
@@ -130,8 +151,9 @@ impl Http2Frame{
             pad_length,
             payload,
             padding,
+            settings,
             // ..Default::default()
-        })
+        },remain))
     }
 }
 
@@ -147,5 +169,49 @@ impl Http2FrameFlags{
     }
 }
 
+impl Http2FrameSettings{
+    pub fn empty()->Self{
+        Self { 
+            header_table_size: None, 
+            enable_push: None, 
+            max_concurrent_streams: None, 
+            initial_window_size: None, 
+            max_frame_size: None, 
+            max_header_list_size: None 
+        }
+    }
+    pub fn parse(buf: &[u8])->Option<Self>{
+        if buf.len()%6!=0 { return None };
+        let buff=buf.chunks(6);
+        let mut opt=Self::empty();
+        for chunk in buff{
+            let name=(chunk[0] as u16)<<8 + chunk[1] as u16;
+            let value=(chunk[2]as u32)<<24 + (chunk[3] as u32)<<16 + (chunk[4] as u32)<<8 + chunk[5] as u32;
+            match name{
+                1=>opt.header_table_size=Some(value),
+                2=>opt.enable_push=Some(value),
+                3=>opt.max_concurrent_streams=Some(value),
+                4=>opt.initial_window_size=Some(value),
+                5=>opt.max_frame_size=Some(value),
+                6=>opt.max_header_list_size=Some(value),
+                _=>(), // invalid setting
+            }
+        }
+        Some(opt)
+    }
+}
+
 impl Default for Http2Frame{ fn default() -> Self { Self::empty() } }
 impl Default for Http2FrameFlags{ fn default() -> Self { Self::empty() } }
+impl Default for Http2FrameSettings{
+    fn default() -> Self {
+        Self { 
+            header_table_size: Some(4096), 
+            enable_push: Some(1), 
+            max_concurrent_streams: Some(i32::MAX as u32), 
+            initial_window_size: Some(u16::MAX as u32), 
+            max_frame_size: Some(16384), 
+            max_header_list_size: Some(u32::MAX),
+        }
+    }
+}

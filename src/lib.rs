@@ -79,11 +79,12 @@ mod test{
         // let frame=http2::Http2Frame::parse(frame_data.clone());
         match http2::Http2Frame::parse(frame_data.clone()){
             None=>panic!("test failed"),
-            Some(frame)=>{
+            Some((frame,rem))=>{
                 // let mut all=true;
                 println!("\x1b[36mframe dump\x1b[0m");
                 dbg!(&frame);
                 
+                assert!(rem.len()!=0,"remaining data for frame that shouldnt");
                 assert!(frame.length==11,"incorrect length");
                 assert!(frame.payload.len()==11,"incorrect payload length");
                 
@@ -121,7 +122,7 @@ mod test{
     #[test]
     fn create_frame_from_frame_test(){
         let source: Vec<u8> = vec![0,0,11 , 0,0 , 0,0,0,1 , 104,101,108,108,111,32,119,111,114,108,100];
-        let frame = http2::Http2Frame::parse(source.clone()).expect("couldnt parse");
+        let (frame,_) = http2::Http2Frame::parse(source.clone()).expect("couldnt parse");
         let back = http2::create::from_frame(frame).expect("could convert frame to buffer");
 
         let tot=back.iter().zip(&source).map(|(a,b)|a==b).count();
