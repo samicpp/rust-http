@@ -10,7 +10,7 @@ use crate::common::{HttpConstructor, HttpError, HttpResult, Stream};
 
 // use hpack;
 
-pub const MAGIC: &'static [u8] = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
+pub const MAGIC: &'static [u8] = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"; // 0x505249202a20485454502f322e300d0a0d0a534d0d0a0d0a => 1969475691506423790601731136945089829455854996988862532874
 
 pub struct Http2Session<'a,S:Stream>{
     netr: Mutex<ReadHalf<S>>, netw: Mutex<WriteHalf<S>>,
@@ -18,9 +18,17 @@ pub struct Http2Session<'a,S:Stream>{
     
     hpackd: Mutex<hpack::Decoder<'a>>, 
     hpacke: Mutex<hpack::Encoder<'a>>,
+
+    pub settings: Http2FrameSettings,
+}
+
+pub struct Http2Stream{
+    pub settings: Http2FrameSettings,
 }
 
 impl<'a,S:Stream> Http2Session<'a,S>{
+    // fn with_settings(socket: S, addr: SocketAddr, settings: Http2FrameSettings)->Self{ }
+
     async fn read_all(&self)->std::io::Result<Vec<u8>>{
         let mut reader=self.netr.lock().await;
         let mut buf=[0u8; 4096];
@@ -82,6 +90,8 @@ impl<'a,S:Stream> Http2Session<'a,S>{
         }
         Ok(frames)
     }
+
+
 }
 
 impl<'a,S:Stream> HttpConstructor<S> for Http2Session<'a,S>{
@@ -93,6 +103,8 @@ impl<'a,S:Stream> HttpConstructor<S> for Http2Session<'a,S>{
             
             hpackd: Mutex::new(hpack::Decoder::new()), 
             hpacke: Mutex::new(hpack::Encoder::new()),
+
+            settings: Default::default(),
         }
     }
 }
