@@ -131,6 +131,7 @@ pub enum HttpError{
     Invalid,
 
     InvalidFrame,
+    InvalidPreface,
     FrameTooBig,
     FrameTooSmall,
 }
@@ -144,6 +145,7 @@ impl fmt::Display for HttpError{
             Self::InvalidHeader=>write!(f,"Cannot use this header"),
             Self::Invalid=>write!(f,"Invalid invocation"),
             Self::InvalidFrame=>write!(f, "Invalid frame"),
+            Self::InvalidPreface=>write!(f, "Invalid preface"),
             Self::FrameTooBig=>write!(f, "Frame payload too big"),
             Self::FrameTooSmall=>write!(f, "Frame head too small"),
         }

@@ -6,13 +6,15 @@ use tokio::io::ReadHalf;
 use tokio::io::WriteHalf;
 
 use crate::http2::core::*;
-use crate::common::{HttpConstructor, HttpResult, Stream};
+use crate::common::{HttpConstructor, HttpError, HttpResult, Stream};
 
 // use hpack;
 
+pub const MAGIC: &'static [u8] = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
+
 pub struct Http2Session<'a,S:Stream>{
     netr: Mutex<ReadHalf<S>>, netw: Mutex<WriteHalf<S>>,
-    addr: SocketAddr,
+    pub addr: SocketAddr,
     
     hpackd: Mutex<hpack::Decoder<'a>>, 
     hpacke: Mutex<hpack::Encoder<'a>>,
@@ -54,6 +56,25 @@ impl<'a,S:Stream> Http2Session<'a,S>{
             match Http2Frame::parse(buff){
                 Some((frame,nbuff))=>{
                     buff=nbuff;
+                    frames.push(frame);
+                },
+                None=>break,
+            }
+        }
+        Ok(frames)
+    }
+    pub async fn init(&self)->HttpResult<Vec<Http2Frame>>{
+        let mut buff=self.read_all().await?;
+        if buff.len()<24 { return Err(HttpError::InvalidPreface) };
+        let mut rest=buff.split_off(24);
+        let matching=buff.iter().zip(MAGIC).map(|(a,b)|a==b).count();
+        if matching!=24{ return Err(HttpError::InvalidPreface) };
+
+        let mut frames=Vec::new();
+        loop{
+            match Http2Frame::parse(rest){
+                Some((frame,nbuff))=>{
+                    rest=nbuff;
                     frames.push(frame);
                 },
                 None=>break,

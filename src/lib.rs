@@ -70,6 +70,8 @@ async fn main_test() -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod test{
+    use crate::http2::stream::Http2Session;
+
     use super::*;
     //use crate::http2;
 
@@ -137,5 +139,31 @@ mod test{
         std::thread::spawn(move||{
             super::main_test().unwrap();
         }).join().unwrap();
+    }
+
+    #[test]
+    #[ignore = "wont end"]
+    fn http2_frame_dump(){
+        tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("could not build tokio runtime")
+        .block_on(async{
+            let listener = tokio::net::TcpListener::bind("0.0.0.0:8192").await.expect("could not bind to port 8192");
+            println!("\x1b[35mhttp://localhost:8192\x1b[0m");
+            loop{
+                let (tcp, addr)=listener.accept().await.expect("error during tcp acceptor");
+                tokio::spawn(async move {
+                    println!("\x1b[33mtcp connection accepted from {}\x1b[0m",addr);
+                    let h2=Http2Session::new(tcp,addr);
+                    let f=h2.init().await.expect("failed to call init");
+                    println!("\x1b[32minit frames\x1b[0m");
+                    dbg!(&f);
+
+                    loop{
+                        let f=h2.incoming_frames().await.expect("error reading frames");
+                        println!("\x1b[32mreceived frames\x1b[0m");
+                        dbg!(&f);
+                    }
+                });
+            }
+        });
     }
 }

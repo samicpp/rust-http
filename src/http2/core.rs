@@ -138,7 +138,11 @@ impl Http2Frame{
         let mut buff=buff;
         let flen=9+length+pad_length as u32+if pad_length!=0{1}else{0};
         let flen=flen as usize;
-        let remain=buff.split_off(flen);
+        // println!("9+{length}+{pad_length} as u32+if {pad_length}!=0{{1}}else{{0}}");
+        // println!("frame size {flen}");
+        // println!("dump:\n{}",String::from_utf8_lossy(&buff));
+        // if buff.len()<flen { return None };
+        let remain=if buff.len()<flen { Vec::new() } else { buff.split_off(flen) };
 
         Some((Self {
             raw: buff,
@@ -185,8 +189,8 @@ impl Http2FrameSettings{
         let buff=buf.chunks(6);
         let mut opt=Self::empty();
         for chunk in buff{
-            let name=(chunk[0] as u16)<<8 + chunk[1] as u16;
-            let value=(chunk[2]as u32)<<24 + (chunk[3] as u32)<<16 + (chunk[4] as u32)<<8 + chunk[5] as u32;
+            let name=(chunk[0] as u16)<<8 | chunk[1] as u16;
+            let value=(chunk[2] as u32)<<24 | (chunk[3] as u32)<<16 | (chunk[4] as u32)<<8 | chunk[5] as u32;
             match name{
                 1=>opt.header_table_size=Some(value),
                 2=>opt.enable_push=Some(value),
