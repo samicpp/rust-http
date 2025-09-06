@@ -158,6 +158,7 @@ mod test{
                     // dbg!(&f);
 
                     loop{
+                        if f.is_empty(){ println!("\x1b[31mconnection likely closed\x1b[0m"); break }
                         println!("\x1b[32mreceived frames\x1b[0m");
                         dbg!(&f);
                         for frame in f{
