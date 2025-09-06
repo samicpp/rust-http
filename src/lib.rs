@@ -70,7 +70,7 @@ async fn main_test() -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod test{
-    use crate::http2::stream::Http2Session;
+    use crate::http2::{stream::Http2Session, Http2FrameType};
 
     use super::*;
     //use crate::http2;
@@ -153,14 +153,29 @@ mod test{
                 tokio::spawn(async move {
                     println!("\x1b[33mtcp connection accepted from {}\x1b[0m",addr);
                     let h2=Http2Session::new(tcp,addr);
-                    let f=h2.init().await.expect("failed to call init");
-                    println!("\x1b[32minit frames\x1b[0m");
-                    dbg!(&f);
+                    let mut f=h2.init().await.expect("failed to call init");
+                    // println!("\x1b[32minit frames\x1b[0m");
+                    // dbg!(&f);
 
                     loop{
-                        let f=h2.incoming_frames().await.expect("error reading frames");
                         println!("\x1b[32mreceived frames\x1b[0m");
                         dbg!(&f);
+                        for frame in f{
+                            match frame.ftype{
+                                Http2FrameType::Headers=>{
+                                    println!("parsing headers");
+                                    let hraw=frame.get_payload();
+                                    let res=h2.hpack_decode(hraw).await.expect("couldnt parse hpack");
+                                    res.iter().for_each(|(name,value)|{
+                                        let ns=String::from_utf8_lossy(&name);
+                                        let vs=String::from_utf8_lossy(&value);
+                                        println!("{ns}: {vs}");
+                                    });
+                                },
+                                _=>(),
+                            }
+                        }
+                        f=h2.incoming_frames().await.expect("error reading frames");
                     }
                 });
             }
