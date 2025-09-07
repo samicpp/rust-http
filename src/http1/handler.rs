@@ -3,17 +3,14 @@ use std::io;
 use tokio::{io::AsyncWriteExt, /*net::TcpSocket*/};
 use std::{collections::HashMap};
 use async_compression::tokio::write::GzipEncoder;
+use base64::{engine::general_purpose, Engine as _};
 
-use crate::common::{ 
-    HttpClient, 
-    Compression, 
-    HttpSocket,
-    HttpConstructor,
-    HttpError,
-    HttpResult,
-    Stream,
-};
+use crate::{common::{ 
+    Compression, HttpClient, HttpConstructor, HttpError, HttpResult, HttpSocket, Stream
+}, http2::{Http2FrameSettings, Http2Session}};
 // use crate::common::HttpSocket;
+
+pub const H2C_UPGRADE: &'static [u8] = b"HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: h2c\r\n\r\n";
 
 pub struct Http1Socket<S:Stream>{
     closed: bool,
@@ -30,7 +27,7 @@ pub struct Http1Socket<S:Stream>{
     pub client: HttpClient,
 }
 
-impl<S:Stream> Http1Socket<S>{
+impl<'a,S:Stream> Http1Socket<S>{
     fn get_headers_as_string(&self)->String{
         let mut tot=String::new();
         for(h,ve)in &self.headers{
@@ -183,6 +180,29 @@ impl<S:Stream> Http1Socket<S>{
         Ok(w.len())
     }
     fn _get_compression(&self)->Compression{ self.compression.clone() }
+    
+    pub async fn h2c(mut self)->HttpResult<Http2Session<'a,S>>{
+        let client=self.client;
+        let settings=if let Some(s)=client.headers.get("http2-settings"){
+            // let s=(&s[0]).to_owned();
+            let dec = general_purpose::STANDARD.decode(&s[0]);
+            if let Ok(p)=dec{
+                if let Some(s)=Http2FrameSettings::parse(&p){ s }
+                else {
+                    Http2FrameSettings::default()
+                }
+            } else {
+                Http2FrameSettings::default()
+            }
+        } else {
+            Http2FrameSettings::default()
+        };
+        
+        self.socket.write_all(H2C_UPGRADE).await?;
+        let ses=Http2Session::new(self.socket, client.info.clone());
+        ses.add_stream(1, client, settings).await?;
+        Ok(ses)
+    }
 }
 
 impl<S:Stream> HttpSocket for Http1Socket<S>{
@@ -223,7 +243,7 @@ impl<S:Stream> HttpSocket for Http1Socket<S>{
         Ok(())
     }
 
-    async  fn read_client(&mut self)->HttpResult<&HttpClient> {
+    async fn read_client(&mut self)->HttpResult<&HttpClient> {
         self.update_client().await?;
         Ok(&self.client)
     }

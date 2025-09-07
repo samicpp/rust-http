@@ -20,9 +20,9 @@ pub mod common;
 
 #[allow(dead_code)]
 async fn http1_serve() -> Result<(), Box<dyn std::error::Error>> {
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:2048").await?;
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:1024").await?;
 
-    println!("http://localhost:2048");
+    println!("http://localhost:1024");
 
     loop {
         let (socket, addr) = listener.accept().await?;
@@ -73,8 +73,8 @@ async fn http1_serve() -> Result<(), Box<dyn std::error::Error>> {
 
 #[allow(dead_code)]
 async fn http2_frame_dump(){
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:4096").await.expect("could not bind to port 4096");
-    println!("\x1b[35mhttp://localhost:4096\x1b[0m");
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:2048").await.expect("could not bind to port 2048");
+    println!("\x1b[35mhttp://localhost:2048\x1b[0m");
     loop{
         let (tcp, addr)=listener.accept().await.expect("error during tcp acceptor");
         tokio::spawn(async move {
@@ -120,8 +120,8 @@ async fn http2_frame_dump(){
 
 #[allow(dead_code)]
 async fn http2_serve(){
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8192").await.expect("could not bind to port 8192");
-    println!("\x1b[35mhttp://localhost:8192\x1b[0m");
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:4096").await.expect("could not bind to port 4096");
+    println!("\x1b[35mhttp://localhost:4096\x1b[0m");
     // unsafe{*(std::ptr::null() as *const u8)};
     loop{
         let (tcp, addr)=listener.accept().await.expect("error during tcp acceptor");
@@ -129,6 +129,7 @@ async fn http2_serve(){
             println!("\x1b[33mtcp connection accepted from {}\x1b[0m",addr);
             let h2=Arc::new(Http2Session::new(tcp,addr));
             let mut f=h2.init().await.expect("failed to call init");
+            h2.send_settings(0, Http2FrameSettings::empty()).await.expect("failed to send own settings");
             // println!("\x1b[32minit frames\x1b[0m");
             // dbg!(&f);
             // let sock=http2::stream::Http2Socket::new(1, &h2);
@@ -141,7 +142,6 @@ async fn http2_serve(){
                     println!("frame = {frame:?}")
                 };
                 //dbg!(&f);
-                h2.send_settings(0, Http2FrameSettings::empty()).await.expect("failed to send own settings");
                 let new=h2.handle_frames(f).await.expect("could not handle frames");
                 // println!("opened streams: {}",new.len());
                 h2.flush().await.expect("failed to flush");
@@ -161,6 +161,72 @@ async fn http2_serve(){
                 f=h2.incoming_frames().await.expect("error reading frames");
             }
         });
+    }
+}
+
+#[allow(dead_code)]
+async fn http_upgrade(){
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8192").await.expect("failed to listen to 8192");
+
+    println!("\x1b[33mhttp://localhost:8192\x1b[0m");
+
+    loop {
+        let (socket, addr) = listener.accept().await.expect("failed to accept tcp connection");
+
+        println!("\x1b[32mclient connected\x1b[0m");
+
+        tokio::spawn(async move {
+            let mut hand=http1::handler::Http1Socket::new(socket, addr);
+            
+            let client=hand.read_client().await.expect("couldnt read client");
+            
+            match client.headers.get("upgrade"){
+                Some(u) if u[0]=="h2c" =>{
+                    let h2=hand.h2c().await.expect("failed to h2c upgrade");
+                    let mut f=h2.init().await.expect("failed to call init");
+                    h2.send_settings(0, Http2FrameSettings::empty()).await.expect("failed to send own settings");
+                    
+                    let _new=h2.handle_frames(f.clone()).await.expect("could not process frames");
+                    h2.send_headers(false, true, 1, vec![(b":status",b"200")]).await.expect("failed to h2 send headers");
+                    h2.send_data(true, 1, b"http2 upgrade succesfull\n").await.expect("failed to send h2 data");
+                    
+                    loop{
+                        if f.len()==0{ println!("\x1b[31mhttp2 connection closed\x1b[0m"); break };
+                        f=h2.incoming_frames().await.expect("error reading frames");
+                    }
+                },
+                Some(u)=>{
+                    println!("other upgrade request '{}'",u[0]);
+                    hand.status=400;
+                    hand.close(b"upgrade not implemented\n").await.expect("couldnt close connection");
+                },
+                None=>{
+                    println!("client did not attempt upgrade");
+                    hand.close(b"client did not attempt upgrade\n").await.expect("couldnt close connection");
+                },
+            }
+        });
+
+        // tokio::spawn(async move {
+        //     let mut buf = vec![0; 1 * 1024_usize.pow(2)]; // 1 mb
+        //    
+        //     let n = match socket.read(&mut buf).await {
+        //         // socket closed
+        //         Ok(0) => return,
+        //         Ok(n) => n,
+        //         Err(e) => {
+        //             eprintln!("failed to read from socket; err = {:?}", e);
+        //             return;
+        //         }
+        //     };
+        //
+        //     // Write the data back
+        //     let _ = socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n").await;
+        //     let _ = socket.write_all(&buf[0..n]).await;
+        //     let _ = socket.shutdown().await;
+        //    
+        // });
+
     }
 }
 
@@ -257,5 +323,12 @@ mod test{
     fn http2_serve_test(){
         tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("could not build tokio runtime")
         .block_on(http2_serve());
+    }
+
+    #[test]
+    #[ignore = "wont end"]
+    fn upgrade_test(){
+        tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("could not build tokio runtime")
+        .block_on(http_upgrade());
     }
 }

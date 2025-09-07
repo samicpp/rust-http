@@ -128,6 +128,22 @@ impl<'a,S:Stream> Http2Session<'a,S>{
     }
     // pub async fn read_one(&self)
 
+    pub async fn add_stream(&self, stream_id: u32, client: HttpClient, settings: Http2FrameSettings)->HttpResult<()>{
+        let mut streams=self.streams.lock().await;
+        if streams.contains_key(&stream_id){ return Err(HttpError::Invalid) };
+        let window_size=if let Some(s)=self.settings.lock().await.initial_window_size{s}else{0};
+        let stream = Http2Stream {
+            stream_id: stream_id,
+            settings: settings,
+            client: client,
+            end_headers: false,
+            end_stream: false,
+            closed: false,
+            window_size,
+        };
+        streams.insert(stream_id, stream);
+        Ok(())
+    }
     pub async fn handle_frames(&self,frames:Vec<Http2Frame>)->HttpResult<Vec<u32>>{
         let mut new_streams=Vec::new();
         for frame in frames{
@@ -363,10 +379,12 @@ impl<'a,S:Stream> Http2Session<'a,S>{
     pub async fn send_headers(&self,last: bool,end_head: bool,stream_id: u32,headers: Vec<(&[u8], &[u8])>)->HttpResult<()>{
         let mut streams=self.streams.lock().await;
         let stream=if let Some(stream)=streams.get_mut(&stream_id){stream}else{ return Err(HttpError::StreamDoesntExist) };
-        if stream.end_headers { return Err(HttpError::HeadersSent) };
-        if stream.closed { return Err(HttpError::ConnectionClosed) };
-        if end_head { stream.end_headers=true };
-        if last { stream.end_stream=true };
+        if stream.end_headers { return Err(HttpError::HeadersSent) }
+        else if stream.closed||stream.end_stream { return Err(HttpError::ConnectionClosed) }
+        else {
+            stream.end_headers=end_head;
+            stream.end_stream=last;
+        };
         drop(streams);
         let fl=if last{1}else{0}|if end_head{4}else{0};
         let fl=fl as u8;

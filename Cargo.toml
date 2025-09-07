@@ -9,3 +9,4 @@ tokio = { version = "1.46.1", features = ["full"] }
 # async-trait = "*"
 async-compression = { version = "0.4.25", features = ["gzip","tokio"] }
 hpack = "0.3.0"
+base64 = "0.22.1"
