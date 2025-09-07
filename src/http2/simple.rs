@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use crate::{common::{HttpClient, HttpError, HttpResult, HttpSocket, Stream}, http2::Http2Session};
 
-pub struct Http2Socket<'a,S:Stream>{ // simplified handler, not the actual session
+pub struct Http2Handler<'a,S:Stream>{ // simplified handler, not the actual session
     pub stream_id: u32,
     pub session: Arc<Http2Session<'a,S>>,
     
@@ -14,7 +14,7 @@ pub struct Http2Socket<'a,S:Stream>{ // simplified handler, not the actual sessi
     closed: bool,
 }
 
-impl<'a,S:Stream> Http2Socket<'a,S>{
+impl<'a,S:Stream> Http2Handler<'a,S>{
     pub fn new(stream_id: u32, session: Arc<Http2Session<'a,S>>)->Self{
         Self { 
             stream_id, session,
@@ -27,7 +27,7 @@ impl<'a,S:Stream> Http2Socket<'a,S>{
     }
 }
 
-impl<'a,S:Stream> HttpSocket for Http2Socket<'a,S>{
+impl<'a,S:Stream> HttpSocket for Http2Handler<'a,S>{
     fn set_header(&mut self, name: &str, value: &str)->HttpResult<()>{
         if self.head_closed { return Err(HttpError::HeadersSent) };
         let name=name.to_lowercase();

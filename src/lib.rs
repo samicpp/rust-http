@@ -7,7 +7,7 @@ use std::sync::Arc;
 use crate::common::HttpSocket;
 use crate::common::HttpConstructor;
 use crate::http2::Http2FrameSettings;
-use crate::http2::Http2Socket;
+use crate::http2::Http2Handler;
 use crate::http2::{stream::Http2Session, Http2FrameType};
 
 // pub mod structs;
@@ -147,7 +147,7 @@ async fn http2_serve(){
                 h2.flush().await.expect("failed to flush");
                 for stream_id in new{
                     println!("responding to stream {stream_id}");
-                    let mut handle=Http2Socket::new(stream_id, Arc::clone(&h2));
+                    let mut handle=Http2Handler::new(stream_id, Arc::clone(&h2));
                     tokio::spawn(async move{
                         let c=handle.read_client().await.expect("failed to read client");
                         dbg!(c);
@@ -206,27 +206,6 @@ async fn http_upgrade(){
                 },
             }
         });
-
-        // tokio::spawn(async move {
-        //     let mut buf = vec![0; 1 * 1024_usize.pow(2)]; // 1 mb
-        //    
-        //     let n = match socket.read(&mut buf).await {
-        //         // socket closed
-        //         Ok(0) => return,
-        //         Ok(n) => n,
-        //         Err(e) => {
-        //             eprintln!("failed to read from socket; err = {:?}", e);
-        //             return;
-        //         }
-        //     };
-        //
-        //     // Write the data back
-        //     let _ = socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n").await;
-        //     let _ = socket.write_all(&buf[0..n]).await;
-        //     let _ = socket.shutdown().await;
-        //    
-        // });
-
     }
 }
 
