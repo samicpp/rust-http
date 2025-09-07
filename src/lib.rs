@@ -3,7 +3,6 @@
 use tokio::time::{Duration, sleep};
 // use std::thread;
 use std::sync::Arc;
-use std::vec;
 
 use crate::common::HttpSocket;
 use crate::common::HttpConstructor;
@@ -150,7 +149,7 @@ async fn http2_serve(){
                     println!("responding to stream {stream_id}");
                     let mut handle=Http2Socket::new(stream_id, Arc::clone(&h2));
                     tokio::spawn(async move{
-                        let c=handle.get_client().await.expect("failed to read client");
+                        let c=handle.read_client().await.expect("failed to read client");
                         dbg!(c);
                         handle.close(b"bytes\n").await.expect("failed to close");
                     });
