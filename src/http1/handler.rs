@@ -288,12 +288,12 @@ impl<S:Stream> HttpSocket for Http1Socket<S>{
                 },
                 Compression::Gzip=>{
                     self.headers.insert("Content-Encoding".to_owned(), vec!["gzip".to_owned()]);
-                    self.send_head().await?;
                     let mut enc=GzipEncoder::new(Vec::new());
                     enc.write_all(bytes).await?;
                     enc.shutdown().await?;
                     let inner = enc.get_ref();
                     self.headers.insert("Content-Length".to_owned(), vec![inner.len().to_string()]);
+                    self.send_head().await?;
                     self.socket.write_all(inner).await?;
                     self.closed=true;
                 },
@@ -318,7 +318,7 @@ impl<S:Stream> HttpConstructor<S> for Http1Socket<S>{
             socket: socket, 
             buff: vec![0_u8; 0], 
             headers: HashMap::new(), 
-            compression: Compression::Gzip,
+            compression: Compression::Plain,
 
             status: 200,
             status_msg: "OK".to_owned(),

@@ -75,8 +75,9 @@ impl<'a,S:Stream> HttpSocket for Http2Handler<'a,S>{
         if self.closed { return Err(HttpError::ConnectionClosed) };
         if self.head_closed { return Err(HttpError::HeadersSent) };
 
-        self.headers.insert(":status".to_owned(), vec![self.status.to_string()]);
-        let mut headers=Vec::new();
+        // self.headers.insert(":status".to_owned(), vec![self.status.to_string()]);
+        let string_stat=self.status.to_string();
+        let mut headers: Vec<(&[u8], &[u8])>=vec![(b":status",string_stat.as_bytes())];
         for (name,values) in &self.headers{
             for value in values { 
                 headers.push((name.as_bytes(),value.as_bytes()))
