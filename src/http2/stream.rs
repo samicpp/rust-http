@@ -20,8 +20,8 @@ pub struct Http2Session<'a,S:Stream>{
     netr: Mutex<ReadHalf<S>>, netw: Mutex<WriteHalf<S>>,
     pub addr: SocketAddr,
     
-    hpackd: Mutex<hpack::Decoder<'a>>, 
-    hpacke: Mutex<hpack::Encoder<'a>>,
+    pub hpackd: Mutex<hpack::decoder::Decoder<'a>>, 
+    pub hpacke: Mutex<hpack::encoder::Encoder<'a>>,
 
     pub settings: Mutex<Http2FrameSettings>,
     pub goaway: AtomicBool,
@@ -44,13 +44,16 @@ pub struct Http2Stream{
 impl<'a,S:Stream> Http2Session<'a,S>{
     fn new(socket: S, addr: SocketAddr, initial_settings: Http2FrameSettings)->Self {
         let (read,write)=tokio::io::split(socket);
-        let ws= if let Some(s)=initial_settings.initial_window_size{s}else{4096};
+        let ws= if let Some(s)=initial_settings.initial_window_size{s}else{16384};
+        let hts= if let Some(s)=initial_settings.header_table_size{s}else{4096};
+        let mut dec=hpack::decoder::Decoder::new();
+        dec.set_max_table_size(hts as usize);
         Self { 
             netr: Mutex::new(read), netw: Mutex::new(write), 
             addr:addr, 
             
-            hpackd: Mutex::new(hpack::Decoder::new()), 
-            hpacke: Mutex::new(hpack::Encoder::new()),
+            hpackd: Mutex::new(dec), 
+            hpacke: Mutex::new(hpack::encoder::Encoder::new()),
 
             settings: Mutex::new(initial_settings),
             streams: Mutex::new(HashMap::new()),
@@ -158,7 +161,9 @@ impl<'a,S:Stream> Http2Session<'a,S>{
                     let mut streams=self.streams.lock().await;
                     if let Some(stream)=streams.get_mut(&frame.stream_id){
                         // let mut client = stream.client.lock().await;
-                        let h=self.hpack_decode(frame.get_payload()).await;
+                        let pay=frame.get_payload();
+                        let pay=if frame.flags.priority{&pay[5..]}else{pay};
+                        let h=self.hpack_decode(pay).await;
                         if let Ok(headers)=h{
                             for (n,v) in headers{
                                 let name=String::from_utf8_lossy(&n).to_string();
@@ -187,7 +192,9 @@ impl<'a,S:Stream> Http2Session<'a,S>{
                             read: true,
                             ..Default::default()
                         };
-                        let h=self.hpack_decode(frame.get_payload()).await;
+                        let pay=frame.get_payload();
+                        let pay=if frame.flags.priority{&pay[5..]}else{pay};
+                        let h=self.hpack_decode(pay).await;
                         if let Ok(headers)=h{
                             for (n,v) in headers{
                                 let name=String::from_utf8_lossy(&n).to_string();
@@ -206,6 +213,14 @@ impl<'a,S:Stream> Http2Session<'a,S>{
                             }
                         } else { 
                             // protocol error
+                            // self.send_goaway(frame.stream_id, 1, b"header index out of bounds").await?;
+                            // self.send_rst_stream(frame.stream_id, 1).await?;
+                            // h.unwrap();
+                            // println!("why {:?}",h);
+                            // let hpackd=self.hpackd.lock().await;
+                            // let sz=hpackd.header_table.dynamic_table.get_max_table_size();
+                            // println!("max table size {}",sz);
+                            client.read=false;
                         };
                         let window_size=if let Some(s)=self.settings.lock().await.initial_window_size{s}else{0};
                         let stream = Http2Stream {
@@ -275,10 +290,15 @@ impl<'a,S:Stream> Http2Session<'a,S>{
                                     }
                                     cset.initial_window_size=Some(v); 
                                 };
-                                // if let Some(size)=settings.header_table_size{
-                                //     let hpacke=self.hpacke.lock().await;
-                                //     hpack::Encoder::new
-                                // };
+                                if let Some(size)=settings.header_table_size{
+                                    let mut enc: tokio::sync::MutexGuard<'_, hpack::encoder::Encoder<'a>>=self.hpacke.lock().await;
+                                    enc.header_table.dynamic_table.set_max_table_size(size as usize);
+
+                                    // let mut nhpackd=hpack::decoder::Decoder::new();
+                                    // hpack::decoder::Decoder::set_max_table_size(&mut nhpackd, size as usize);
+                                    // *hpackdg=nhpackd;
+                                    // hpack::Encoder::new
+                                };
 
                                 drop(streams);
                                 self.send_ackset(0).await?;
@@ -423,6 +443,26 @@ impl<'a,S:Stream> Http2Session<'a,S>{
     pub async fn send_pong(&self,payload: &[u8])->HttpResult<()>{
         let fb = create::raw_frame(0, 6, 1, payload, EMPTY)?;
         self.write(&fb).await?;
+        Ok(())
+    }
+    pub async fn send_goaway(&self, stream_id: u32, error_code: u32, debug: &[u8])->HttpResult<()>{
+        let mut buf: Vec<u8>=vec![
+            (stream_id>>24)as u8,(stream_id>>16)as u8,(stream_id>>8)as u8,stream_id as u8,
+            (error_code>>24)as u8,(error_code>>16)as u8,(error_code>>8)as u8,error_code as u8,
+        ];
+        buf.extend_from_slice(debug);
+        let fb=create::raw_frame(0, 7, 0, &buf, EMPTY)?;
+        self.write(&fb).await?;
+        self.goaway.swap(false, Ordering::SeqCst);
+        Ok(())
+    }
+    pub async fn send_rst_stream(&self, stream_id: u32, error_code: u32)->HttpResult<()>{
+        let buf: Vec<u8>=vec![
+            (error_code>>24)as u8,(error_code>>16)as u8,(error_code>>8)as u8,error_code as u8,
+        ];
+        let fb=create::raw_frame(stream_id, 7, 0, &buf, EMPTY)?;
+        self.write(&fb).await?;
+        self.goaway.swap(false, Ordering::SeqCst);
         Ok(())
     }
 }

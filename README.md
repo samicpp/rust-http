@@ -11,3 +11,5 @@ HTTP framework in rust
 6. [x] refactoring of traits structs and enums
 7. [x] make a stream trait to make socket structs generic
 
+## Credits
+This repo makes use of [mlalic/hpack](https://github.com/mlalic/hpack-rs)
