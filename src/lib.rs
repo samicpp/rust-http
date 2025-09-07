@@ -2,9 +2,14 @@
 // use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time::{Duration, sleep};
 // use std::thread;
+use std::sync::Arc;
+use std::vec;
 
 use crate::common::HttpSocket;
 use crate::common::HttpConstructor;
+use crate::http2::Http2FrameSettings;
+use crate::http2::Http2Socket;
+use crate::http2::{stream::Http2Session, Http2FrameType};
 
 // pub mod structs;
 // pub mod traits;
@@ -15,11 +20,10 @@ pub mod listener;
 pub mod common;
 
 #[allow(dead_code)]
-#[tokio::main]
-async fn main_test() -> Result<(), Box<dyn std::error::Error>> {
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:4096").await?;
+async fn http1_serve() -> Result<(), Box<dyn std::error::Error>> {
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:2048").await?;
 
-    println!("http://localhost:4096");
+    println!("http://localhost:2048");
 
     loop {
         let (socket, addr) = listener.accept().await?;
@@ -68,10 +72,101 @@ async fn main_test() -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
+#[allow(dead_code)]
+async fn http2_frame_dump(){
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:4096").await.expect("could not bind to port 4096");
+    println!("\x1b[35mhttp://localhost:4096\x1b[0m");
+    loop{
+        let (tcp, addr)=listener.accept().await.expect("error during tcp acceptor");
+        tokio::spawn(async move {
+            println!("\x1b[33mtcp connection accepted from {}\x1b[0m",addr);
+            let h2=Http2Session::new(tcp,addr);
+            let mut f=h2.init().await.expect("failed to call init");
+            // println!("\x1b[32minit frames\x1b[0m");
+            // dbg!(&f);
+            // let sock=http2::stream::Http2Socket::new(1, &h2);
+            loop{
+                if f.is_empty(){ println!("\x1b[31mconnection likely closed\x1b[0m"); break }
+                println!("\x1b[32mreceived frames\x1b[0m");
+                dbg!(&f);
+                for frame in f{
+                    match frame.ftype{
+                        Http2FrameType::Headers=>{
+                            println!("parsing headers");
+                            let hraw=frame.get_payload();
+                            let res=h2.hpack_decode(hraw).await.expect("couldnt parse hpack");
+                            res.iter().for_each(|(name,value)|{
+                                let ns=String::from_utf8_lossy(&name);
+                                let vs=String::from_utf8_lossy(&value);
+                                println!("{ns}: {vs}");
+                            });
+                        },
+                        _=>(),
+                    }
+                }
+                f=h2.incoming_frames().await.expect("error reading frames");
+            }
+        });
+    }
+}
+
+// const SETTINGS:Http2FrameSettings=Http2FrameSettings{
+//     header_table_size: None,
+//     enable_push: None,
+//     max_concurrent_streams: None,
+//     initial_window_size: None,
+//     max_frame_size: None,
+//     max_header_list_size: None,
+// };
+
+#[allow(dead_code)]
+async fn http2_serve(){
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8192").await.expect("could not bind to port 8192");
+    println!("\x1b[35mhttp://localhost:8192\x1b[0m");
+    // unsafe{*(std::ptr::null() as *const u8)};
+    loop{
+        let (tcp, addr)=listener.accept().await.expect("error during tcp acceptor");
+        tokio::spawn(async move {
+            println!("\x1b[33mtcp connection accepted from {}\x1b[0m",addr);
+            let h2=Arc::new(Http2Session::new(tcp,addr));
+            let mut f=h2.init().await.expect("failed to call init");
+            // println!("\x1b[32minit frames\x1b[0m");
+            // dbg!(&f);
+            // let sock=http2::stream::Http2Socket::new(1, &h2);
+            loop{
+                if f.is_empty(){ println!("\x1b[31mconnection likely closed\x1b[0m"); break }
+                // println!("\x1b[32mreceived frames\x1b[0m");
+                for frame in &f{
+                    if frame.flags.acknowledge { continue }
+                    println!("type = \x1b[34m{:?}\x1b[0m",frame.ftype);
+                    println!("frame = {frame:?}")
+                };
+                //dbg!(&f);
+                h2.send_settings(0, Http2FrameSettings::empty()).await.expect("failed to send own settings");
+                let new=h2.handle_frames(f).await.expect("could not handle frames");
+                // println!("opened streams: {}",new.len());
+                h2.flush().await.expect("failed to flush");
+                for stream_id in new{
+                    println!("responding to stream {stream_id}");
+                    let mut handle=Http2Socket::new(stream_id, Arc::clone(&h2));
+                    tokio::spawn(async move{
+                        let c=handle.get_client().await.expect("failed to read client");
+                        dbg!(c);
+                        handle.close(b"bytes\n").await.expect("failed to close");
+                    });
+
+                    // // manual
+                    // h2.send_headers(false, true, stream_id, vec![(b":status",b"200")]).await.expect("failed to send headers");
+                    // h2.send_data(true, stream_id, b"payload").await.expect("failed to send data");
+                };
+                f=h2.incoming_frames().await.expect("error reading frames");
+            }
+        });
+    }
+}
+
 #[cfg(test)]
 mod test{
-    use crate::http2::{stream::Http2Session, Http2FrameType};
-
     use super::*;
     //use crate::http2;
 
@@ -85,8 +180,9 @@ mod test{
                 // let mut all=true;
                 println!("\x1b[36mframe dump\x1b[0m");
                 dbg!(&frame);
+                dbg!(&rem);
                 
-                assert!(rem.len()!=0,"remaining data for frame that shouldnt");
+                assert!(rem.len()==0,"remaining data for frame that shouldnt");
                 assert!(frame.length==11,"incorrect length");
                 assert!(frame.payload.len()==11,"incorrect payload length");
                 
@@ -131,55 +227,36 @@ mod test{
         assert!(tot==source.len(),"back different length than source");
     }
 
-
-
     #[test]
-    #[ignore = "wont end"]
-    fn http1_serve_test(){
-        std::thread::spawn(move||{
-            super::main_test().unwrap();
-        }).join().unwrap();
+    fn create_settings_frame_test(){
+        let ss=http2::Http2FrameSettings::default();
+        let sb=ss.to_buff();
+        let fb = http2::create::raw_frame(0, 4, 0, &sb, b"").expect("failed to create raw frame");
+        println!("default settings frame dump {}",fb.len());
+        dbg!(&fb);
+        let (fr,rs)=http2::Http2Frame::parse(fb).expect("failed to parse frame");
+        assert!(rs.len()==0,"rest buffer on single frame");
+        dbg!(&fr);
     }
 
     #[test]
     #[ignore = "wont end"]
-    fn http2_frame_dump(){
+    fn http1_serve_test(){
         tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("could not build tokio runtime")
-        .block_on(async{
-            let listener = tokio::net::TcpListener::bind("0.0.0.0:8192").await.expect("could not bind to port 8192");
-            println!("\x1b[35mhttp://localhost:8192\x1b[0m");
-            loop{
-                let (tcp, addr)=listener.accept().await.expect("error during tcp acceptor");
-                tokio::spawn(async move {
-                    println!("\x1b[33mtcp connection accepted from {}\x1b[0m",addr);
-                    let h2=Http2Session::new(tcp,addr);
-                    let mut f=h2.init().await.expect("failed to call init");
-                    // println!("\x1b[32minit frames\x1b[0m");
-                    // dbg!(&f);
+        .block_on(http1_serve());
+    }
 
-                    loop{
-                        if f.is_empty(){ println!("\x1b[31mconnection likely closed\x1b[0m"); break }
-                        println!("\x1b[32mreceived frames\x1b[0m");
-                        dbg!(&f);
-                        for frame in f{
-                            match frame.ftype{
-                                Http2FrameType::Headers=>{
-                                    println!("parsing headers");
-                                    let hraw=frame.get_payload();
-                                    let res=h2.hpack_decode(hraw).await.expect("couldnt parse hpack");
-                                    res.iter().for_each(|(name,value)|{
-                                        let ns=String::from_utf8_lossy(&name);
-                                        let vs=String::from_utf8_lossy(&value);
-                                        println!("{ns}: {vs}");
-                                    });
-                                },
-                                _=>(),
-                            }
-                        }
-                        f=h2.incoming_frames().await.expect("error reading frames");
-                    }
-                });
-            }
-        });
+    #[test]
+    #[ignore = "wont end"]
+    fn http2_frame_dump_test(){
+        tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("could not build tokio runtime")
+        .block_on(http2_frame_dump());
+    }
+
+    #[test]
+    #[ignore = "wont end"]
+    fn http2_serve_test(){
+        tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("could not build tokio runtime")
+        .block_on(http2_serve());
     }
 }

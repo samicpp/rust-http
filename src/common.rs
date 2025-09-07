@@ -124,16 +124,16 @@ pub type HttpResult<T> = Result<T,HttpError>;
 pub enum HttpError{
     Io(io::Error),
     ConnectionClosed,
+    Invalid,
 
     HeadersSent,
     InvalidHeader,
-
-    Invalid,
 
     InvalidFrame,
     InvalidPreface,
     FrameTooBig,
     FrameTooSmall,
+    StreamDoesntExist,
 }
 
 impl fmt::Display for HttpError{
@@ -148,6 +148,7 @@ impl fmt::Display for HttpError{
             Self::InvalidPreface=>write!(f, "Invalid preface"),
             Self::FrameTooBig=>write!(f, "Frame payload too big"),
             Self::FrameTooSmall=>write!(f, "Frame head too small"),
+            Self::StreamDoesntExist=>write!(f, "Stream doesnt exist"),
         }
     }
 }

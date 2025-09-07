@@ -92,7 +92,7 @@ impl Http2Frame{
         let length: u32 = (buff[0] as u32) << 16 | (buff[1] as u32) << 8 | (buff[2] as u32);
         let type_int = buff[3];
         let flags_int = buff[4];
-        let stream_id = (buff[5] as u32) << 24 | (buff[6] as u32) << 16 | (buff[7] as u32) << 8 | (buff[8] as u32); // & 0x7FFF_FFFF;
+        let stream_id = ((buff[5] as u32) << 24 | (buff[6] as u32) << 16 | (buff[7] as u32) << 8 | (buff[8] as u32)) & 0x7FFF_FFFF;
 
         let ftype = {
             use Http2FrameType::*;
@@ -202,6 +202,30 @@ impl Http2FrameSettings{
             }
         }
         Some(opt)
+    }
+    pub fn to_buff(&self)->Vec<u8>{
+        let mut buff=Vec::new();
+        if let Some(v)=self.header_table_size{
+            // let v=self.header_table_size;
+            let buf=vec![0,1,(v>>24)as u8,(v>>16)as u8,(v>>8)as u8,v as u8];
+            buff.extend_from_slice(&buf);
+        } if let Some(v)=self.enable_push{
+            let buf=vec![0,2,(v>>24)as u8,(v>>16)as u8,(v>>8)as u8,v as u8];
+            buff.extend_from_slice(&buf);
+        } if let Some(v)=self.max_concurrent_streams{
+            let buf=vec![0,3,(v>>24)as u8,(v>>16)as u8,(v>>8)as u8,v as u8];
+            buff.extend_from_slice(&buf);
+        } if let Some(v)=self.initial_window_size{
+            let buf=vec![0,4,(v>>24)as u8,(v>>16)as u8,(v>>8)as u8,v as u8];
+            buff.extend_from_slice(&buf);
+        } if let Some(v)=self.max_frame_size{
+            let buf=vec![0,5,(v>>24)as u8,(v>>16)as u8,(v>>8)as u8,v as u8];
+            buff.extend_from_slice(&buf);
+        } if let Some(v)=self.max_header_list_size{
+            let buf=vec![0,6,(v>>24)as u8,(v>>16)as u8,(v>>8)as u8,v as u8];
+            buff.extend_from_slice(&buf);
+        }
+        buff
     }
 }
 
