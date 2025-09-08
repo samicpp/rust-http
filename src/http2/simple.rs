@@ -110,7 +110,7 @@ impl<'a,S:Stream> HttpSocket for Http2Handler<'a,S>{
         loop{
             if let Some(restv)=rest_opt{
                 tokio::time::sleep(Duration::from_millis(5)).await;
-                rest_opt=self.session.send_data(true, self.stream_id, &restv).await?;
+                rest_opt=self.session.send_data(false, self.stream_id, &restv).await?;
             } else {
                 break;
             };
