@@ -374,13 +374,17 @@ impl<'a,S:Stream> Http2Session<'a,S>{
 
     pub async fn send_data(&self,last: bool,stream_id: u32,payload: &[u8])->HttpResult<Option<Vec<u8>>>{
         let mut cws=self.window_size.lock().await;
+        let mws=self.settings.lock().await.max_frame_size.unwrap_or(16384) as usize;
         let mut streams=self.streams.lock().await;
         let stream=if let Some(stream)=streams.get_mut(&stream_id){stream}else{ return Err(HttpError::StreamDoesntExist) };
         if stream.end_stream { return Err(HttpError::ConnectionClosed) };
         if stream.closed { return Err(HttpError::ConnectionClosed) };
         let sws=stream.window_size;
         let min=if cws.clone()<sws{cws.clone()}else{sws} as usize;
-        if payload.len()<min{
+        let min=if mws<min{mws}else{min};
+        if min==0{
+            Ok(Some(payload.to_vec()))
+        } else if payload.len()<min{
             let fb=create::raw_frame(stream_id, 0, if last{1}else{0}, payload, EMPTY)?;
             self.write(&fb).await?;
             stream.window_size-=payload.len() as u32;
@@ -459,6 +463,15 @@ impl<'a,S:Stream> Http2Session<'a,S>{
     pub async fn send_rst_stream(&self, stream_id: u32, error_code: u32)->HttpResult<()>{
         let buf: Vec<u8>=vec![
             (error_code>>24)as u8,(error_code>>16)as u8,(error_code>>8)as u8,error_code as u8,
+        ];
+        let fb=create::raw_frame(stream_id, 7, 0, &buf, EMPTY)?;
+        self.write(&fb).await?;
+        self.goaway.swap(false, Ordering::SeqCst);
+        Ok(())
+    }
+    pub async fn send_window_update(&self, stream_id: u32, size: u32)->HttpResult<()>{
+        let buf: Vec<u8>=vec![
+            (size>>24)as u8,(size>>16)as u8,(size>>8)as u8,size as u8,
         ];
         let fb=create::raw_frame(stream_id, 7, 0, &buf, EMPTY)?;
         self.write(&fb).await?;
