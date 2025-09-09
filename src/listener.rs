@@ -7,10 +7,10 @@ use tokio::net::{TcpListener, TcpStream};
 // use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[allow(unreachable_code)]
-pub async fn http_listener<F, S, Fut>(address: &str, listener: F)->io::Result<()>
+pub async fn http_listener<F, S, O, Fut>(address: &str, listener: F)->io::Result<()>
 where F: Fn(S)->Fut + Send + Clone + Sync + 'static,
     S: HttpSocket+HttpConstructor<TcpStream>,
-    Fut: Future<Output = ()> + Send + 'static
+    Fut: Future<Output = O> + Send + 'static
 {
     let server = TcpListener::bind(address).await?;
     loop{

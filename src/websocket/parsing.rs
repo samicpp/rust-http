@@ -2,7 +2,8 @@
 
 use std::{ops::Range};
 
-// 5.2 #section-5.2
+// 5.2 #autoid-23
+#[derive(Debug,Clone)]
 pub struct WebSocketFrame{
     pub raw: Vec<u8>,
 
@@ -22,6 +23,27 @@ pub struct WebSocketFrame{
 
     pub payload: Range<usize>,
     pub unmasked: Vec<u8>,
+
+    pub ftype: WebSocketFrameType,
+}
+
+// 11.8 #autoid-82
+#[derive(Debug,Clone,Copy)]
+pub enum WebSocketFrameType{
+                          // -+--------+-------------------------------------+-----------|
+    Continuation,         //  | 0      | Continuation Frame                  | RFC 6455  |
+                          // -+--------+-------------------------------------+-----------|
+    Text,                 //  | 1      | Text Frame                          | RFC 6455  |
+                          // -+--------+-------------------------------------+-----------|
+    Binary,               //  | 2      | Binary Frame                        | RFC 6455  |
+                          // -+--------+-------------------------------------+-----------|
+    ConnectionClose,      //  | 8      | Connection Close Frame              | RFC 6455  |
+                          // -+--------+-------------------------------------+-----------|
+    Ping,                 //  | 9      | Ping Frame                          | RFC 6455  |
+                          // -+--------+-------------------------------------+-----------|
+    Pong,                 //  | 10     | Pong Frame                          | RFC 6455  |
+                          // -+--------+-------------------------------------+-----------|
+    Other(u8),
 }
 
 impl WebSocketFrame{
@@ -38,9 +60,10 @@ impl WebSocketFrame{
             act_length: 0,
             payload: 0..0,
             unmasked: Vec::new(), 
+            ftype: WebSocketFrameType::Other(0),
         }
     }
-    pub fn parse(buf: Vec<u8>)->Option<Self>{
+    pub fn parse(mut buf: Vec<u8>)->Option<(Self,Vec<u8>)>{
         // let mut wsf = Self{
         //     raw: buf.to_vec(),
         //     ..Self::empty()
@@ -64,18 +87,23 @@ impl WebSocketFrame{
         } else {
             0
         };
+
         let act_length=if ext_length!=0{ ext_length }else{ length as u64 };
         let mask_key=if mask && buf.len()>=offset+4 { 
             let r=offset..offset+4;
             offset+=4; 
             r
+        } else if buf.len()<offset+4 { 
+            return None
         } else { 0..0 };
+        
         let mask_slice=&buf[mask_key.clone()];
         let payload=if buf.len()>=offset+act_length as usize { 
             offset..offset+act_length as usize
         } else { 
             return None
         };
+
         let unmasked=if mask{
             let mut unmasked=(&buf[payload.clone()]).to_vec();
             for i in 0..payload.len(){
@@ -86,7 +114,21 @@ impl WebSocketFrame{
             Vec::new()
         };
 
-        Some(Self { 
+        use WebSocketFrameType::*;
+        let ftype=match opcode{
+            0=>Continuation,
+            1=>Text,
+            2=>Binary,
+            8=>ConnectionClose,
+            9=>Ping,
+            10=>Pong,
+            o=>Other(o),
+        };
+
+        let tl=offset+act_length as usize;
+        let rest=buf.split_off(tl);
+
+        Some((Self { 
             raw: buf, 
             fin, 
             rsv, 
@@ -98,8 +140,9 @@ impl WebSocketFrame{
             mask_key,
             payload,
             unmasked,
+            ftype,
             // ..Self::empty()
-        })
+        },rest))
     }
 
     pub fn get_payload(&self)->&[u8]{
