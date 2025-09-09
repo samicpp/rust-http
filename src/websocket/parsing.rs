@@ -102,7 +102,13 @@ impl WebSocketFrame{
         })
     }
 
-    pub fn get_payload(){}
+    pub fn get_payload(&self)->&[u8]{
+        if self.mask{
+            &self.unmasked
+        } else {
+            &self.raw[self.payload.clone()]
+        }
+    }
 }
 
 impl Default for WebSocketFrame{ fn default() -> Self { Self::empty() } }
