@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 use crate::common::{HttpConstructor, HttpResult, Stream};
 use crate::websocket::{parsing::*};
-use tokio::io::{AsyncWriteExt};
+use tokio::io::{AsyncWriteExt,AsyncReadExt};
 
 pub const MAGIC:&'static [u8]=b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
@@ -12,6 +12,19 @@ pub struct WebSocket<S:Stream+Send+Sync>{
 }
 
 impl<S:Stream+Send+Sync> WebSocket<S>{
+    async fn read_all(&mut self)->std::io::Result<Vec<u8>>{
+        let mut buf=[0u8; 4096];
+        let mut total = Vec::new();
+        loop{
+            let n=self.tcp.read(&mut buf).await?;
+            if n==0{ break };
+            total.extend_from_slice(&buf[..n]);
+            if n<buf.len(){
+                break
+            }
+        }
+        Ok(total)
+    }
     fn create_frame(fin:bool,opcode:u8,payload:&[u8])->Vec<u8>{
         let mut b=vec![
             if fin{ 0x80 } else { 0x0 } | (opcode&0xF),
@@ -34,8 +47,8 @@ impl<S:Stream+Send+Sync> WebSocket<S>{
         b
     }
     pub fn incoming(&mut self)->impl Future<Output = HttpResult<Vec<WebSocketFrame>>>{
-        async {
-            let mut b=self.tcp.read_all().await?;
+        async move {
+            let mut b=self.read_all().await?;
             let mut frames=vec![];
             loop{
                 match WebSocketFrame::parse(b){

@@ -1,6 +1,6 @@
 // use std::fmt::UpperHex;
 use std::io;
-use tokio::{io::AsyncWriteExt, /*net::TcpSocket*/};
+use tokio::{io::AsyncWriteExt, io::AsyncReadExt, /*net::TcpSocket*/};
 use std::{collections::HashMap};
 use async_compression::tokio::write::GzipEncoder;
 use base64::{engine::general_purpose, Engine as _};
@@ -61,8 +61,21 @@ impl<'a,S:Stream> Http1Socket<S>{
         // self.buff.extend_from_slice(&buff);
         Ok(r)
     }*/
-    async fn read_new(&mut self)->io::Result<usize>{
-        let read=self.socket.read_all().await?;
+    async fn read_all(&mut self)->io::Result<Vec<u8>>{
+        let mut buf=[0u8; 4096];
+        let mut total = Vec::new();
+        loop{
+            let n=self.socket.read(&mut buf).await?;
+            if n==0{ break };
+            total.extend_from_slice(&buf[..n]);
+            if n<buf.len(){
+                break
+            }
+        }
+        Ok(total)
+    }
+    pub async fn read_new(&mut self)->io::Result<usize>{
+        let read=self.read_all().await?;
         self.buff.extend_from_slice(&read);
         Ok(read.len())
     }
@@ -226,6 +239,7 @@ impl<'a,S:Stream> Http1Socket<S>{
     }
 }
 
+#[async_trait::async_trait]
 impl<S:Stream> HttpSocket for Http1Socket<S>{
     type Stream = S;
     fn set_header(&mut self, name: &str, value: &str)->HttpResult<()>{
@@ -265,7 +279,7 @@ impl<S:Stream> HttpSocket for Http1Socket<S>{
         Ok(())
     }
 
-    async fn read_client(&mut self)->HttpResult<&HttpClient> {
+    async fn read_client(&mut self)->HttpResult<&HttpClient>{ 
         self.update_client().await?;
         Ok(&self.client)
     }

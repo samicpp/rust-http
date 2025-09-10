@@ -1,5 +1,5 @@
 // use tokio::net;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, /*AsyncWriteExt*/};
+use tokio::io::{AsyncRead, AsyncWrite, /*AsyncWriteExt*/};
 use std::collections::HashMap;
 // use std::fmt::write;
 // use crate::structs;
@@ -16,6 +16,7 @@ use crate::websocket::WebSocket;
 // # Http
 
 // #[allow(async_fn_in_trait)]
+#[async_trait::async_trait]
 pub trait HttpSocket{
     type Stream: Stream;
     // fn new(socket: S, addr: std::net::SocketAddr)->Self;
@@ -25,14 +26,14 @@ pub trait HttpSocket{
     fn set_compression(&mut self, new_compression: Compression)->HttpResult<()>;
     fn set_status(&mut self, status: u16, msg: String)->HttpResult<()>;
     
-    fn read_client<'_a>(&'_a mut self)->impl Future<Output = Result<&'_a HttpClient, HttpError>>;
-    fn get_client<'_a>(&'_a mut self)->impl Future<Output = Result<&'_a HttpClient, HttpError>>;
+    async fn read_client<'_a>(&'_a mut self)->Result<&'_a HttpClient, HttpError>;
+    async fn get_client<'_a>(&'_a mut self)->Result<&'_a HttpClient, HttpError>;
 
-    fn send_head(&mut self)->impl Future<Output = HttpResult<()>>;
-    fn close(&mut self, bytes: &[u8])->impl Future<Output = HttpResult<()>>;
-    fn write(&mut self, bytes: &[u8])->impl Future<Output = HttpResult<()>>;
+    async fn send_head(&mut self)->HttpResult<()>;
+    async fn close(&mut self, bytes: &[u8])->HttpResult<()>;
+    async fn write(&mut self, bytes: &[u8])->HttpResult<()>;
 
-    fn websocket(self)->impl Future<Output = HttpResult<WebSocket<Self::Stream>>>;
+    async fn websocket(self)->HttpResult<WebSocket<Self::Stream>>;
 
     fn r#type(&self)->HttpType;
     fn get_http1(self)->Http1Socket<Self::Stream>;
@@ -109,27 +110,29 @@ pub enum HttpType{
 //     async fn write_all<'a>(&'a mut self, src: &'a [u8]) -> io::Result<()>;
 // }
 // #[allow(async_fn_in_trait)]
+#[async_trait::async_trait]
 pub trait Stream:AsyncRead+AsyncWrite+Unpin+Send+Sync{
-    fn read_all(&mut self)->impl Future<Output = io::Result<Vec<u8>>>;
+    // fn read_all(&mut self)->impl Future<Output = io::Result<Vec<u8>>>;
 }
 
+#[async_trait::async_trait]
 impl<T> Stream for T
 where
     T: AsyncRead + AsyncWrite + Unpin + Send + Sync,
 {
-    async fn read_all(&mut self)->io::Result<Vec<u8>>{
-        let mut buf=[0u8; 4096];
-        let mut total = Vec::new();
-        loop{
-            let n=self.read(&mut buf).await?;
-            if n==0{ break };
-            total.extend_from_slice(&buf[..n]);
-            if n<buf.len(){
-                break
-            }
-        }
-        Ok(total)
-    }
+    // async fn read_all(&mut self)->io::Result<Vec<u8>>{
+    //     let mut buf=[0u8; 4096];
+    //     let mut total = Vec::new();
+    //     loop{
+    //         let n=self.read(&mut buf).await?;
+    //         if n==0{ break };
+    //         total.extend_from_slice(&buf[..n]);
+    //         if n<buf.len(){
+    //             break
+    //         }
+    //     }
+    //     Ok(total)
+    // }
 }
 // impl Stream for net::TcpStream{}
 

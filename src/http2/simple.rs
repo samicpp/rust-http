@@ -27,6 +27,7 @@ impl<'a,S:Stream> Http2Handler<'a,S>{
     }
 }
 
+#[async_trait::async_trait]
 impl<'a,S:Stream> HttpSocket for Http2Handler<'a,S>{
     type Stream = S;
     fn set_header(&mut self, name: &str, value: &str)->HttpResult<()>{
@@ -62,13 +63,13 @@ impl<'a,S:Stream> HttpSocket for Http2Handler<'a,S>{
         Ok(())
     }
     
-    async fn read_client<'_a>(&'_a mut self)->Result<&'_a HttpClient, HttpError>{ 
+    async fn read_client(&mut self)->Result<&HttpClient, HttpError>{ 
         let mut streams=self.session.streams.lock().await;
         let stream=if let Some(s)=streams.get_mut(&self.stream_id){ s } else{ return Err(HttpError::StreamDoesntExist) };
         self.client=stream.client.clone();
         Ok(&self.client)
     }
-    async fn get_client<'_a>(&'_a mut self)->Result<&'_a HttpClient, HttpError>{ 
+    async fn get_client(&mut self)->Result<&HttpClient, HttpError>{ 
         Ok(&self.client)
     }
 

@@ -6,7 +6,7 @@ authors = ["samicpp"]
 
 [dependencies]
 tokio = { version = "1.46.1", features = ["full"] }
-# async-trait = "*"
+async-trait = "0.1.89"
 async-compression = { version = "0.4.25", features = ["gzip","tokio"] }
 hpack = { path = "./hpack-rs" }
 base64 = "0.22.1"
