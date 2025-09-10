@@ -119,15 +119,15 @@ impl<'a,S:Stream> HttpSocket for Http2Handler<'a,S>{
         Ok(())
     }
 
-    // async fn websocket(self)->HttpResult<crate::websocket::WebSocket<S>> {
-    //     self.session.send_rst_stream(self.stream_id, 0xd).await?;
-    //     Err(HttpError::NotSupported)
-    // }
+    async fn websocket(self)->HttpResult<crate::websocket::WebSocket<S>> {
+        self.session.send_rst_stream(self.stream_id, 0xd).await?;
+        Err(HttpError::NotSupported)
+    }
     fn r#type(&self)->HttpType{
         HttpType::Http2
     }
-    // fn get_http2(&self)->Arc<Http2Session<'a,Self::Stream>> {
-    //     Arc::clone(&self.session)
+    // fn get_http2(self)->Arc<Http2Session<Self::Stream>> {
+    //     self.session
     // }
     fn get_http1(self)->crate::http1::Http1Socket<Self::Stream> {
         panic!("cannot convert http2 to http1")

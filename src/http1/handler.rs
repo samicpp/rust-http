@@ -331,16 +331,16 @@ impl<S:Stream> HttpSocket for Http1Socket<S>{
     }
 
     // #[allow(refining_impl_trait)]
-    // async fn websocket(mut self)->HttpResult<WebSocket<S>> {
-    //     self.websocket()
-    // }
+    async fn websocket(self)->HttpResult<WebSocket<S>> {
+        self.websocket().await
+    }
     fn r#type(&self)->HttpType{
         HttpType::Http1
     }
     fn get_http1(self)->Http1Socket<Self::Stream> {
         self
     }
-    // fn get_http2(&self)->std::sync::Arc<Http2Session<'a,Self::Stream>> {
+    // fn get_http2(&self)->std::sync::Arc<Http2Session<Self::Stream>> {
     //     panic!("cannot cast http1 to http2")
     // }
 }
