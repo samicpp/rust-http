@@ -28,19 +28,23 @@ impl<S:Stream+Send+Sync> WebSocket<S>{
     fn create_frame(fin:bool,opcode:u8,payload:&[u8])->Vec<u8>{
         let mut b=vec![
             if fin{ 0x80 } else { 0x0 } | (opcode&0xF),
-            if payload.len()>127 { 127 } else if payload.len()>126 { 126 } else { payload.len() as u8 },
+            0//if payload.len()>127 { 127 } else if payload.len()>126 { 126 } else { payload.len() as u8 },
         ];
-        if payload.len()>u16::MAX as usize { 
+        if payload.len()<126{
+            b[1]=payload.len() as u8;
+        } else if payload.len() <= u16::MAX as usize{
+            b[1]=126;
+            let el=vec![
+                (payload.len()>>8)as u8, payload.len() as u8, 
+            ];
+            b.extend_from_slice(&el);
+        } else { 
+            b[1]=127;
             let el=vec![
                 (payload.len()>>56)as u8, (payload.len()>>48)as u8, (payload.len()>>40)as u8, (payload.len()>>32)as u8, 
                 (payload.len()>>24)as u8, (payload.len()>>16)as u8, (payload.len()>>8)as u8, payload.len() as u8, 
             ]; 
             // to (payload.len() as u64).to_be_bytes()
-            b.extend_from_slice(&el);
-        } else if payload.len()>126 { 
-            let el=vec![
-                (payload.len()>>8)as u8, payload.len() as u8, 
-            ];
             b.extend_from_slice(&el);
         };
         b.extend_from_slice(payload);
@@ -89,7 +93,7 @@ impl<S:Stream+Send+Sync> WebSocket<S>{
     pub async fn send_close(&mut self, status: u16,reason: &[u8])->HttpResult<()>{
         let mut b=vec![ (status<<8) as u8, status as u8 ];
         b.extend_from_slice(reason);
-        let fb=Self::create_frame(true, 10, &b);
+        let fb=Self::create_frame(true, 8, &b);
         self.tcp.write_all(&fb).await?;
         Ok(())
     }

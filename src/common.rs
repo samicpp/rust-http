@@ -40,7 +40,7 @@ pub trait HttpSocket{
     // fn get_http2(&self)->Arc<Http2Session<Self::Stream>>;
 }
 
-// type DynSocket=Box<dyn HttpSocket>;
+pub type DynSocket=Box<dyn HttpSocket<Stream = dyn Stream>>;
 
 pub trait HttpConstructor<S:Stream>{
     fn new(socket: S, addr: std::net::SocketAddr)->Self;

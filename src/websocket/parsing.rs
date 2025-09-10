@@ -79,11 +79,11 @@ impl WebSocketFrame{
         let length=s&0x7F;
         let ext_length=if length==126{
             offset+=2;
-            (buf.get(2)?<<8) as u64 | *buf.get(3)? as u64
+            (*buf.get(2)? as u64)<<8 | *buf.get(3)? as u64
         } else if length==127 {
             offset+=8;
-            (buf.get(2)?<<56) as u64 | (buf.get(3)?<<48) as u64 | (buf.get(4)?<<40) as u64 | (buf.get(5)?<<32) as u64 |
-            (buf.get(6)?<<24) as u64 | (buf.get(7)?<<16) as u64 | (buf.get(8)?<<8) as u64 | *buf.get(9)? as u64
+            (*buf.get(2)? as u64)<<56 | (*buf.get(2)? as u64)<<48 | (*buf.get(2)?as u64)<<40 | (*buf.get(2)? as u64)<<32 |
+            (*buf.get(2)? as u64)<<24 | (*buf.get(2)? as u64)<<16 | (*buf.get(2)? as u64)<<8 | *buf.get(9)? as u64
         } else {
             0
         };
