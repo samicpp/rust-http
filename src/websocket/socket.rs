@@ -1,22 +1,23 @@
 use std::net::SocketAddr;
+use tokio::sync::Mutex;
 use crate::common::{HttpConstructor, HttpResult, Stream};
 use crate::websocket::{parsing::*};
-use tokio::io::{AsyncWriteExt,AsyncReadExt};
-
+use tokio::io::{AsyncWriteExt,AsyncReadExt,ReadHalf,WriteHalf};
 pub const MAGIC:&'static [u8]=b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
 // #[derive(Debug)]
 pub struct WebSocket<S:Stream+Send+Sync>{
-    tcp: S,  // named tcp, even though not strictly tcp
+    read: Mutex<ReadHalf<S>>, write: Mutex<WriteHalf<S>>,
     pub addr: SocketAddr,
 }
 
 impl<S:Stream+Send+Sync> WebSocket<S>{
-    async fn read_all(&mut self)->std::io::Result<Vec<u8>>{
+    async fn read_all(&self)->std::io::Result<Vec<u8>>{
         let mut buf=[0u8; 4096];
         let mut total = Vec::new();
+        let mut read=self.read.lock().await;
         loop{
-            let n=self.tcp.read(&mut buf).await?;
+            let n=read.read(&mut buf).await?;
             if n==0{ break };
             total.extend_from_slice(&buf[..n]);
             if n<buf.len(){
@@ -50,7 +51,7 @@ impl<S:Stream+Send+Sync> WebSocket<S>{
         b.extend_from_slice(payload);
         b
     }
-    pub fn incoming(&mut self)->impl Future<Output = HttpResult<Vec<WebSocketFrame>>>{
+    pub fn incoming(&self)->impl Future<Output = HttpResult<Vec<WebSocketFrame>>>{
         async move {
             let mut b=self.read_all().await?;
             let mut frames=vec![];
@@ -70,39 +71,42 @@ impl<S:Stream+Send+Sync> WebSocket<S>{
             Ok(frames)
         }
     }
-    pub async fn send_text(&mut self,text: &[u8])->HttpResult<()>{
+    pub async fn send_text(&self,text: &[u8])->HttpResult<()>{
         let fb=Self::create_frame(true, 1, text);
-        self.tcp.write_all(&fb).await?;
+        self.write.lock().await.write_all(&fb).await?;
         Ok(())
     }
     pub async fn send_binary(&mut self, bin: &[u8])->HttpResult<()>{
         let fb=Self::create_frame(true, 2, bin);
-        self.tcp.write_all(&fb).await?;
+        self.write.lock().await.write_all(&fb).await?;
         Ok(())
     }
-    pub async fn send_ping(&mut self)->HttpResult<()>{
+    pub async fn send_ping(&self)->HttpResult<()>{
         let fb=Self::create_frame(true, 9, &[0,0,0,1]);
-        self.tcp.write_all(&fb).await?;
+        self.write.lock().await.write_all(&fb).await?;
         Ok(())
     }
-    pub async fn send_pong(&mut self, pay: &[u8])->HttpResult<()>{
+    pub async fn send_pong(&self, pay: &[u8])->HttpResult<()>{
         let fb=Self::create_frame(true, 10, pay);
-        self.tcp.write_all(&fb).await?;
+        self.write.lock().await.write_all(&fb).await?;
         Ok(())
     }
-    pub async fn send_close(&mut self, status: u16,reason: &[u8])->HttpResult<()>{
+    pub async fn send_close(&self, status: u16,reason: &[u8])->HttpResult<()>{
         let mut b=vec![ (status<<8) as u8, status as u8 ];
         b.extend_from_slice(reason);
         let fb=Self::create_frame(true, 8, &b);
-        self.tcp.write_all(&fb).await?;
+        self.write.lock().await.write_all(&fb).await?;
         Ok(())
     }
 }
 
 impl<S:Stream> HttpConstructor<S> for WebSocket<S>{
     fn new(socket: S, addr: std::net::SocketAddr)->Self {
+        let (read,write)=tokio::io::split(socket);
         Self { 
-            tcp: socket, addr 
+            read: Mutex::new(read), 
+            write: Mutex::new(write), 
+            addr, 
         }
     }
 }
