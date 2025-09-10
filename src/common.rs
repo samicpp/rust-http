@@ -5,13 +5,19 @@ use std::collections::HashMap;
 // use crate::structs;
 use std::io;
 use std::fmt;
+use std::sync::Arc;
+
+use crate::http1::Http1Socket;
+use crate::http2::Http2Session;
+use crate::websocket::WebSocket;
 // use std::pin::Pin;
 
 
 // # Http
 
 // #[allow(async_fn_in_trait)]
-pub trait HttpSocket:Send+Sync{
+pub trait HttpSocket{
+    type Stream: Stream;
     // fn new(socket: S, addr: std::net::SocketAddr)->Self;
     
     fn set_header(&mut self, name: &str, value: &str)->HttpResult<()>;
@@ -25,6 +31,12 @@ pub trait HttpSocket:Send+Sync{
     fn send_head(&mut self)->impl Future<Output = HttpResult<()>>;
     fn close(&mut self, bytes: &[u8])->impl Future<Output = HttpResult<()>>;
     fn write(&mut self, bytes: &[u8])->impl Future<Output = HttpResult<()>>;
+
+    // fn websocket(self)->impl Future<Output = HttpResult<WebSocket<Self::Stream>>>;
+
+    fn r#type(&self)->HttpType;
+    fn get_http1(self)->Http1Socket<Self::Stream>;
+    // fn get_http2(&self)->Arc<Http2Session<'a,Self::Stream>>;
 }
 
 // type DynSocket=Box<dyn HttpSocket>;
@@ -84,6 +96,11 @@ pub enum Compression{
     Gzip,
 }
 
+#[derive(Debug,Clone,Copy,PartialEq)]
+pub enum HttpType{
+    Http1,
+    Http2,
+}
 // ## Generic streams
 // #[allow(async_fn_in_trait)]
 // pub trait NetStream{
@@ -134,6 +151,10 @@ pub enum HttpError{
     FrameTooBig,
     FrameTooSmall,
     StreamDoesntExist,
+
+    MissingHeaders,
+
+    NotSupported,
 }
 
 impl fmt::Display for HttpError{
@@ -149,6 +170,8 @@ impl fmt::Display for HttpError{
             Self::FrameTooBig=>write!(f, "Frame payload too big"),
             Self::FrameTooSmall=>write!(f, "Frame head too small"),
             Self::StreamDoesntExist=>write!(f, "Stream doesnt exist"),
+            Self::MissingHeaders=>write!(f, "Header(s) missing"),
+            Self::NotSupported=>write!(f, "Operation not supported"),
         }
     }
 }

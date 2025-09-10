@@ -4,13 +4,16 @@ use tokio::{io::AsyncWriteExt, /*net::TcpSocket*/};
 use std::{collections::HashMap};
 use async_compression::tokio::write::GzipEncoder;
 use base64::{engine::general_purpose, Engine as _};
+use sha1::{Sha1, Digest};
 
 use crate::{common::{ 
-    Compression, HttpClient, HttpConstructor, HttpError, HttpResult, HttpSocket, Stream
+    Compression, HttpClient, HttpConstructor, HttpError, HttpResult, HttpSocket, HttpType, Stream
 }, http2::{Http2FrameSettings, Http2Session}};
+use crate::websocket::{WebSocket,MAGIC};
 // use crate::common::HttpSocket;
 
 pub const H2C_UPGRADE: &'static [u8] = b"HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: h2c\r\n\r\n";
+pub const WS_UPGRADE: &'static [u8] = b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ";
 
 pub struct Http1Socket<S:Stream>{
     closed: bool,
@@ -203,9 +206,28 @@ impl<'a,S:Stream> Http1Socket<S>{
         ses.add_stream(1, client, settings).await?;
         Ok(ses)
     }
+    pub async fn websocket(mut self)->HttpResult<WebSocket<S>>{
+        let wskey=if let Some(k)=self.client.headers.get("sec-websocket-key"){ &k[0] }else{ return Err(HttpError::MissingHeaders) };
+        
+        let mut decreskey=wskey.as_bytes().to_vec();
+        decreskey.extend_from_slice(MAGIC);
+
+        let mut sh=Sha1::new();
+        sh.update(&decreskey);
+        let shares=sh.finalize();
+
+        let reskey=general_purpose::STANDARD.encode(shares);
+
+        let totres=[WS_UPGRADE,reskey.as_bytes(),b"\r\n\r\n"].concat();
+
+        self.socket.write_all(&totres).await?;
+
+        Ok(WebSocket::new(self.socket, self.client.info.clone()))
+    }
 }
 
 impl<S:Stream> HttpSocket for Http1Socket<S>{
+    type Stream = S;
     fn set_header(&mut self, name: &str, value: &str)->HttpResult<()>{
         if self.head_closed { return Err(HttpError::HeadersSent) };
         match name.to_lowercase().as_str(){
@@ -307,6 +329,20 @@ impl<S:Stream> HttpSocket for Http1Socket<S>{
         self.socket.shutdown().await?;
         Ok(())
     }
+
+    // #[allow(refining_impl_trait)]
+    // async fn websocket(mut self)->HttpResult<WebSocket<S>> {
+    //     self.websocket()
+    // }
+    fn r#type(&self)->HttpType{
+        HttpType::Http1
+    }
+    fn get_http1(self)->Http1Socket<Self::Stream> {
+        self
+    }
+    // fn get_http2(&self)->std::sync::Arc<Http2Session<'a,Self::Stream>> {
+    //     panic!("cannot cast http1 to http2")
+    // }
 }
 
 impl<S:Stream> HttpConstructor<S> for Http1Socket<S>{

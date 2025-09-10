@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use crate::{common::{HttpClient, HttpError, HttpResult, HttpSocket, Stream}, http2::Http2Session};
+use crate::{common::{HttpClient, HttpError, HttpResult, HttpSocket, HttpType, Stream}, http2::Http2Session};
 
 pub struct Http2Handler<'a,S:Stream>{ // simplified handler, not the actual session
     pub stream_id: u32,
@@ -28,6 +28,7 @@ impl<'a,S:Stream> Http2Handler<'a,S>{
 }
 
 impl<'a,S:Stream> HttpSocket for Http2Handler<'a,S>{
+    type Stream = S;
     fn set_header(&mut self, name: &str, value: &str)->HttpResult<()>{
         if self.head_closed { return Err(HttpError::HeadersSent) };
         let name=name.to_lowercase();
@@ -116,6 +117,20 @@ impl<'a,S:Stream> HttpSocket for Http2Handler<'a,S>{
             };
         };
         Ok(())
+    }
+
+    // async fn websocket(self)->HttpResult<crate::websocket::WebSocket<S>> {
+    //     self.session.send_rst_stream(self.stream_id, 0xd).await?;
+    //     Err(HttpError::NotSupported)
+    // }
+    fn r#type(&self)->HttpType{
+        HttpType::Http2
+    }
+    // fn get_http2(&self)->Arc<Http2Session<'a,Self::Stream>> {
+    //     Arc::clone(&self.session)
+    // }
+    fn get_http1(self)->crate::http1::Http1Socket<Self::Stream> {
+        panic!("cannot convert http2 to http1")
     }
 }
 

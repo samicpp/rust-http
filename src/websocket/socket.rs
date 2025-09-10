@@ -6,12 +6,12 @@ use tokio::io::{AsyncWriteExt};
 pub const MAGIC:&'static [u8]=b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
 // #[derive(Debug)]
-pub struct WebSocket<S:Stream>{
+pub struct WebSocket<S:Stream+Send+Sync>{
     tcp: S,  // named tcp, even though not strictly tcp
     pub addr: SocketAddr,
 }
 
-impl<S:Stream> WebSocket<S>{
+impl<S:Stream+Send+Sync> WebSocket<S>{
     fn create_frame(fin:bool,opcode:u8,payload:&[u8])->Vec<u8>{
         let mut b=vec![
             if fin{ 0x80 } else { 0x0 } | (opcode&0xF),
@@ -33,23 +33,25 @@ impl<S:Stream> WebSocket<S>{
         b.extend_from_slice(payload);
         b
     }
-    pub async fn incoming(&mut self)->HttpResult<Vec<WebSocketFrame>>{
-        let mut b=self.tcp.read_all().await?;
-        let mut frames=vec![];
-        loop{
-            match WebSocketFrame::parse(b){
-                None=>break,
-                Some((frame,r)) if r.is_empty()=>{
-                    frames.push(frame);
-                    break
-                },
-                Some((frame,rest))=>{
-                    frames.push(frame);
-                    b=rest;
-                },
+    pub fn incoming(&mut self)->impl Future<Output = HttpResult<Vec<WebSocketFrame>>>{
+        async {
+            let mut b=self.tcp.read_all().await?;
+            let mut frames=vec![];
+            loop{
+                match WebSocketFrame::parse(b){
+                    None=>break,
+                    Some((frame,r)) if r.is_empty()=>{
+                        frames.push(frame);
+                        break
+                    },
+                    Some((frame,rest))=>{
+                        frames.push(frame);
+                        b=rest;
+                    },
+                }
             }
+            Ok(frames)
         }
-        Ok(frames)
     }
     pub async fn send_text(&mut self,text: &[u8])->HttpResult<()>{
         let fb=Self::create_frame(true, 1, text);
