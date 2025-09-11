@@ -129,7 +129,32 @@ impl<'a,S:Stream> Http2Session<'a,S>{
         }
         Ok(frames)
     }
+    
     // pub async fn read_one(&self)
+    pub async fn read_one(&self)->Option<Http2Frame>{
+        let mut reader=self.netr.lock().await;
+        let mut buf=[0u8; 9];
+        let mut pbuf=[0u8];
+        let _=reader.read(&mut buf).await.ok()?;
+        let len=(*&buf[0] as u32)<<16|(*&buf[1] as u32)<<8|*&buf[2] as u32;
+        let len=len as usize;
+        let padded=(&buf[4]&8)!=0;
+        let plen=if padded{
+            reader.read(&mut pbuf).await.ok()?;
+            *&pbuf[0]
+        } else {
+            0
+        };
+        let plen=plen as usize;
+        let mut fbuf=vec![0u8; len+plen];
+        reader.read(&mut fbuf).await.ok()?;
+        let mut full=Vec::new();
+        full.extend_from_slice(&buf);
+        if padded { full.extend_from_slice(&pbuf) };
+        full.extend_from_slice(&fbuf);
+        let (frame,_)=Http2Frame::parse(full)?;
+        Some(frame)
+    }
 
     pub async fn add_stream(&self, stream_id: u32, client: HttpClient, settings: Http2FrameSettings)->HttpResult<()>{
         let mut streams=self.streams.lock().await;
