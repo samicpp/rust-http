@@ -40,6 +40,19 @@ impl<'a,S:Stream> HttpSocket for Http2Handler<'a,S>{
             },
             _ => (),
         };
+        self.headers.insert(name.to_owned(), vec![value.to_owned()]);
+        Ok(())
+    }
+    fn add_header(&mut self, name: &str, value: &str)->HttpResult<()>{
+        if self.head_closed { return Err(HttpError::HeadersSent) };
+        let name=name.to_lowercase();
+        if name.starts_with(":"){ return Err(HttpError::InvalidHeader) };
+        match name.as_str(){
+            "connection" | "content-length" | "transfer-encoding" => {
+                return Err(HttpError::InvalidHeader)
+            },
+            _ => (),
+        };
         if let Some(vec)=self.headers.get_mut(&name){
             vec.push(value.to_owned());
         } else {

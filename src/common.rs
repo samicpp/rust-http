@@ -22,6 +22,7 @@ pub trait HttpSocket{
     // fn new(socket: S, addr: std::net::SocketAddr)->Self;
     
     fn set_header(&mut self, name: &str, value: &str)->HttpResult<()>;
+    fn add_header(&mut self, name: &str, value: &str)->HttpResult<()>;
     fn remove_header(&mut self, name: &str)->HttpResult<Vec<String>>;
     fn set_compression(&mut self, new_compression: Compression)->HttpResult<()>;
     fn set_status(&mut self, status: u16, msg: String)->HttpResult<()>;
