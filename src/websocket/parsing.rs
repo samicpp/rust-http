@@ -82,8 +82,8 @@ impl WebSocketFrame{
             (*buf.get(2)? as u64)<<8 | *buf.get(3)? as u64
         } else if length==127 {
             offset+=8;
-            (*buf.get(2)? as u64)<<56 | (*buf.get(2)? as u64)<<48 | (*buf.get(2)?as u64)<<40 | (*buf.get(2)? as u64)<<32 |
-            (*buf.get(2)? as u64)<<24 | (*buf.get(2)? as u64)<<16 | (*buf.get(2)? as u64)<<8 | *buf.get(9)? as u64
+            (*buf.get(2)? as u64)<<56 | (*buf.get(3)? as u64)<<48 | (*buf.get(4)?as u64)<<40 | (*buf.get(5)? as u64)<<32 |
+            (*buf.get(6)? as u64)<<24 | (*buf.get(7)? as u64)<<16 | (*buf.get(8)? as u64)<<8 | *buf.get(9)? as u64
         } else {
             0
         };
