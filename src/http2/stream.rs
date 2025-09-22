@@ -16,6 +16,8 @@ use crate::common::{HttpClient, HttpConstructor, HttpError, HttpResult, /*HttpSo
 pub const MAGIC: &'static [u8] = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"; // 0x505249202a20485454502f322e300d0a0d0a534d0d0a0d0a => 1969475691506423790601731136945089829455854996988862532874
 const EMPTY: &'static [u8] = &[];
 
+// TODO: read and send big header continuation frames & add integrated flow control in send_data & send window size update on client read 
+
 pub struct Http2Session<'a,S:Stream>{
     netr: Mutex<ReadHalf<S>>, netw: Mutex<WriteHalf<S>>,
     pub addr: SocketAddr,

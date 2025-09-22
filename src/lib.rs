@@ -14,6 +14,7 @@ use crate::http2::{stream::Http2Session, Http2FrameType};
 // pub mod traits;
 pub mod http1;
 pub mod http2;
+pub mod http3;
 pub mod websocket;
 pub mod listener;
 pub mod common;
