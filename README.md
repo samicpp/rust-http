@@ -10,6 +10,7 @@ HTTP framework in rust
 5. [x] implement WebSocket
 6. [x] refactoring of traits structs and enums
 7. [x] make a stream trait to make socket structs generic
+8. [ ] implement HTTP/3
 
 ## Credits
 This repo makes use of [mlalic/hpack](https://github.com/mlalic/hpack-rs)

@@ -11,3 +11,4 @@ async-compression = { version = "0.4.25", features = ["gzip","tokio"] }
 hpack = { path = "./hpack-rs" }
 base64 = "0.22.1"
 sha1 = "0.10.6"
+# ls-qpack = "0.1.4"
