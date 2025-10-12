@@ -145,6 +145,7 @@ pub type HttpResult<T> = Result<T,HttpError>;
 pub enum HttpError{
     Io(io::Error),
     ConnectionClosed,
+    StreamClosed,
     Invalid,
 
     HeadersSent,
@@ -166,6 +167,7 @@ impl fmt::Display for HttpError{
         match self{
             Self::Io(io_err)=>write!(f,"I/O Error: {}",io_err),
             Self::ConnectionClosed=>write!(f,"Connection is closed"),
+            Self::StreamClosed=>write!(f,"Stream is closed"),
             Self::HeadersSent=>write!(f,"Headers already sent"),
             Self::InvalidHeader=>write!(f,"Cannot use this header"),
             Self::Invalid=>write!(f,"Invalid invocation"),

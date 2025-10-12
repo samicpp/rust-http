@@ -21,6 +21,7 @@ pub struct Http2Frame{
 
     pub pad_length: u8,
     pub padding: Range<usize>,
+    pub priority: Range<usize>,
 
     pub settings: Option<Http2FrameSettings>,
 }
@@ -83,6 +84,7 @@ impl Http2Frame{
             flags_int: 0b00000000, 
             pad_length: 0, 
             padding: 0..0, 
+            priority: 0..0, 
             settings: None,
         }
     }
@@ -90,10 +92,13 @@ impl Http2Frame{
     pub fn parse(buff: Vec<u8>)->Option<(Self,Vec<u8>)>{
         if buff.len()<9 { return None };
 
-        let length: u32 = (buff[0] as u32) << 16 | (buff[1] as u32) << 8 | (buff[2] as u32);
+        let length = ((buff[0] as u32) << 16 | (buff[1] as u32) << 8 | (buff[2] as u32)) as usize;
         let type_int = buff[3];
         let flags_int = buff[4];
         let stream_id = ((buff[5] as u32) << 24 | (buff[6] as u32) << 16 | (buff[7] as u32) << 8 | (buff[8] as u32)) & 0x7FFF_FFFF;
+        let mut offset = 0;
+
+        if buff.len()<(9+length) { return None };
 
         let ftype = {
             use Http2FrameType::*;
@@ -120,34 +125,41 @@ impl Http2Frame{
             // ..Default::default()
         };
 
-        let pad_length = if flags.padded && buff.len()>=10{
-            buff[9]
+        let pad_length = if flags.padded{
+            let len=buff[9];
+            offset += 1;
+            len
         } else { 0 };
 
-        let payload_start: usize = if flags.padded { 10 } else { 9 };
-        let payload_end: usize = if buff.len()>=(length as usize+payload_start) { length as usize + payload_start } else { payload_start };
-        let payload = Range{ start: payload_start, end: payload_end };
+        let priority = if flags.priority{
+            let r=Range { start: 9+offset, end: 9+offset+5 };
+            offset+=5;
+            r
+        } else {
+            0..0
+        };
+
+        // let payload_start: usize = if flags.padded { 10 } else { 9 };
+        // let payload_end: usize = if buff.len()>=(length as usize+payload_start) { length as usize + payload_start } else { payload_start };
+        let payload = Range{ start: 9+offset, end: 9+length-offset };
 
         let padding = if flags.padded{
-            let padding_start = payload_end;
-            let padding_end: usize = if buff.len()>=(pad_length as usize + padding_start) { pad_length as usize + padding_start } else { padding_start };
-            Range{ start: padding_start, end: padding_end }
-        } else { 0..0 };
+            Range{ start: 9+length-offset, end: 9+length }
+        } else { 
+            0..0
+        };
 
         let settings=if ftype==Http2FrameType::Settings{Http2FrameSettings::parse(&buff[payload.clone()])}else{None};
 
         let mut buff=buff;
-        let flen=9+length+pad_length as u32+if pad_length!=0{1}else{0};
-        let flen=flen as usize;
-        // println!("9+{length}+{pad_length} as u32+if {pad_length}!=0{{1}}else{{0}}");
-        // println!("frame size {flen}");
-        // println!("dump:\n{}",String::from_utf8_lossy(&buff));
-        // if buff.len()<flen { return None };
+        let flen=9+length as usize;
+        
+
         let remain=if buff.len()<flen { Vec::new() } else { buff.split_off(flen) };
 
         Some((Self {
             raw: buff,
-            length,
+            length: length as u32,
             type_int,
             flags_int,
             stream_id,
@@ -156,6 +168,7 @@ impl Http2Frame{
             pad_length,
             payload,
             padding,
+            priority,
             settings,
             // ..Default::default()
         },remain))

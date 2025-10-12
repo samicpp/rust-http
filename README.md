@@ -11,7 +11,7 @@ HTTP framework in rust
 6. [x] refactoring of traits structs and enums
 7. [x] make a stream trait to make socket structs generic
 8. [ ] implement HTTP/3
-9. [ ] rewrite HTTP/2 implementation to be more like `samicpp/java-http`
+9. [x] rewrite HTTP/2 implementation to be more like `samicpp/java-http`
 
 ## Credits
 This repo makes use of [mlalic/hpack](https://github.com/mlalic/hpack-rs)

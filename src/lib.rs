@@ -81,7 +81,8 @@ async fn http2_frame_dump(){
         tokio::spawn(async move {
             println!("\x1b[33mtcp connection accepted from {}\x1b[0m",addr);
             let h2=Http2Session::new(tcp,addr);
-            let mut f=h2.init().await.expect("failed to call init");
+            h2.init().await.expect("failed to call init");
+            let mut f=h2.incoming_frames().await.expect("failed to read incoming");
             // println!("\x1b[32minit frames\x1b[0m");
             // dbg!(&f);
             // let sock=http2::stream::Http2Socket::new(1, &h2);
@@ -129,7 +130,8 @@ async fn http2_serve(){
         tokio::spawn(async move {
             println!("\x1b[33mtcp connection accepted from {}\x1b[0m",addr);
             let h2=Arc::new(Http2Session::new(tcp,addr));
-            let mut f=h2.init().await.expect("failed to call init");
+            h2.init().await.expect("failed to call init");
+            let mut f=h2.incoming_frames().await.expect("failed to read incoming");
             h2.send_settings(0, Http2FrameSettings::empty()).await.expect("failed to send own settings");
             // println!("\x1b[32minit frames\x1b[0m");
             // dbg!(&f);
@@ -184,9 +186,11 @@ async fn http_upgrade(){
             match client.headers.get("upgrade"){
                 Some(u) if u[0]=="h2c" =>{
                     let h2=hand.h2c().await.expect("failed to h2c upgrade");
-                    let mut f=h2.init().await.expect("failed to call init");
+                    h2.init().await.expect("failed to call init");
+
                     h2.send_settings(0, Http2FrameSettings::empty()).await.expect("failed to send own settings");
-                    
+                    let mut f = h2.incoming_frames().await.expect("could not read incoming");
+
                     let _new=h2.handle_frames(f.clone()).await.expect("could not process frames");
                     h2.send_headers(false, true, 1, vec![(b":status",b"200")]).await.expect("failed to h2 send headers");
                     h2.send_data(true, 1, b"http2 upgrade succesfull\n").await.expect("failed to send h2 data");

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, /*time::Duration*/};
 
 use crate::{common::{HttpClient, HttpError, HttpResult, HttpSocket, HttpType, Stream}, http2::Http2Session};
 
@@ -105,31 +105,19 @@ impl<'a,S:Stream> HttpSocket for Http2Handler<'a,S>{
     }
     async fn close(&mut self, bytes: &[u8])->HttpResult<()>{ 
         if self.closed { return Err(HttpError::ConnectionClosed) };
-        if !self.head_closed { self.send_head().await? };
-        let mut rest_opt: Option<Vec<u8>>=self.session.send_data(true, self.stream_id, bytes).await?;
-        loop{
-            if let Some(restv)=rest_opt{
-                tokio::time::sleep(Duration::from_millis(1)).await;
-                rest_opt=self.session.send_data(true, self.stream_id, &restv).await?;
-            } else {
-                break;
-            };
+        if !self.head_closed { 
+            self.headers.insert("content-length".to_owned(), vec![bytes.len().to_string()]);
+            self.send_head().await? 
         };
-        self.closed=true;
+
+        self.session.send_data(true, self.stream_id, bytes).await?;
         Ok(())
     }
     async fn write(&mut self, bytes: &[u8])->HttpResult<()>{ 
         if self.closed { return Err(HttpError::ConnectionClosed) };
         if !self.head_closed { self.send_head().await? };
-        let mut rest_opt: Option<Vec<u8>>=self.session.send_data(true, self.stream_id, bytes).await?;
-        loop{
-            if let Some(restv)=rest_opt{
-                tokio::time::sleep(Duration::from_millis(5)).await;
-                rest_opt=self.session.send_data(false, self.stream_id, &restv).await?;
-            } else {
-                break;
-            };
-        };
+        
+        self.session.send_data(false, self.stream_id, bytes).await?;
         Ok(())
     }
 

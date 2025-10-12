@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::net::SocketAddr;
 // use std::sync::{Arc};
 use std::sync::atomic::{AtomicBool,Ordering};
@@ -30,6 +30,8 @@ pub struct Http2Session<'a,S:Stream>{
     pub window_size: Mutex<u32>,
 
     pub streams: Mutex<HashMap<u32,Http2Stream>>,
+    
+    que: Mutex<VecDeque<Http2Frame>>,
 }
 
 pub struct Http2Stream{
@@ -61,6 +63,7 @@ impl<'a,S:Stream> Http2Session<'a,S>{
             streams: Mutex::new(HashMap::new()),
             goaway: AtomicBool::new(false),
             window_size: Mutex::new(ws),
+            que: Mutex::new(VecDeque::new()),
         }
     }
     // fn with_settings(socket: S, addr: SocketAddr, settings: Http2FrameSettings)->Self{ }
@@ -99,63 +102,62 @@ impl<'a,S:Stream> Http2Session<'a,S>{
     }
     pub async fn incoming_frames(&self)->HttpResult<Vec<Http2Frame>>{
         // let mut reader=self.netr.lock().await;
-        let mut buff=self.read_all().await?;
-        let mut frames=Vec::new();
-        loop{
-            match Http2Frame::parse(buff){
-                Some((frame,nbuff))=>{
-                    buff=nbuff;
-                    frames.push(frame);
-                },
-                None=>break,
+        let mut que=self.que.lock().await;
+        if que.is_empty(){
+            let mut buff=self.read_all().await?;
+            let mut frames=Vec::new();
+            loop{
+                match Http2Frame::parse(buff){
+                    Some((frame,nbuff))=>{
+                        buff=nbuff;
+                        frames.push(frame);
+                    },
+                    None=>break,
+                }
             }
+            Ok(frames)
+        } else {
+            let frames = que.clone().into_iter().collect();
+            que.clear();
+            Ok(frames)
         }
-        Ok(frames)
     }
-    pub async fn init(&self)->HttpResult<Vec<Http2Frame>>{
-        let mut buff=self.read_all().await?;
-        if buff.len()<24 { return Err(HttpError::InvalidPreface) };
-        let mut rest=buff.split_off(24);
-        let matching=buff.iter().zip(MAGIC).map(|(a,b)|a==b).count();
-        if matching!=24{ return Err(HttpError::InvalidPreface) };
+    
+    pub async fn init(&self)->HttpResult<()>{
+        let mut pref = [0u8; 24];
+        let mut reader = self.netr.lock().await;
 
-        let mut frames=Vec::new();
-        loop{
-            match Http2Frame::parse(rest){
-                Some((frame,nbuff))=>{
-                    rest=nbuff;
-                    frames.push(frame);
-                },
-                None=>break,
-            }
-        }
-        Ok(frames)
+        reader.read_exact(&mut pref).await?;
+        if pref!=MAGIC { Err(HttpError::InvalidPreface) }
+        else { Ok(()) }
     }
     
     // pub async fn read_one(&self)
-    pub async fn read_one(&self)->Option<Http2Frame>{
+    async fn readone(&self)->Option<Http2Frame>{
         let mut reader=self.netr.lock().await;
         let mut buf=[0u8; 9];
-        let mut pbuf=[0u8];
-        let _=reader.read(&mut buf).await.ok()?;
-        let len=(*&buf[0] as u32)<<16|(*&buf[1] as u32)<<8|*&buf[2] as u32;
+        let mut full = Vec::new();
+        reader.read_exact(&mut buf).await.ok()?;
+
+        let len=(buf[0] as u32)<<16 | (buf[1] as u32)<<8 | buf[2] as u32;
         let len=len as usize;
-        let padded=(&buf[4]&8)!=0;
-        let plen=if padded{
-            reader.read(&mut pbuf).await.ok()?;
-            *&pbuf[0]
-        } else {
-            0
-        };
-        let plen=plen as usize;
-        let mut fbuf=vec![0u8; len+plen];
-        reader.read(&mut fbuf).await.ok()?;
-        let mut full=Vec::new();
+
+        let mut buff = vec![0u8; len];
+        reader.read_exact(&mut buff).await.ok()?;
+
         full.extend_from_slice(&buf);
-        if padded { full.extend_from_slice(&pbuf) };
-        full.extend_from_slice(&fbuf);
+        full.extend_from_slice(&buff);
+        
         let (frame,_)=Http2Frame::parse(full)?;
         Some(frame)
+    }
+    pub async fn read_one(&self)->Option<Http2Frame>{
+        let mut que=self.que.lock().await;
+        if !que.is_empty(){ 
+            que.pop_front()
+        } else {
+            self.readone().await
+        }
     }
 
     pub async fn add_stream(&self, stream_id: u32, client: HttpClient, settings: Http2FrameSettings)->HttpResult<()>{
@@ -399,32 +401,66 @@ impl<'a,S:Stream> Http2Session<'a,S>{
         Ok(new_streams)
     }
 
-    pub async fn send_data(&self,last: bool,stream_id: u32,payload: &[u8])->HttpResult<Option<Vec<u8>>>{
+    pub async fn send_data(&self,last: bool,stream_id: u32,payload: &[u8])->HttpResult<()>{
         let mut cws=self.window_size.lock().await;
-        let mws=self.settings.lock().await.max_frame_size.unwrap_or(16384) as usize;
+        let mfs=self.settings.lock().await.max_frame_size.unwrap_or(16384) as usize;
+        
         let mut streams=self.streams.lock().await;
         let stream=if let Some(stream)=streams.get_mut(&stream_id){stream}else{ return Err(HttpError::StreamDoesntExist) };
-        if stream.end_stream { return Err(HttpError::ConnectionClosed) };
+        if stream.end_stream { return Err(HttpError::StreamClosed) };
         if stream.closed { return Err(HttpError::ConnectionClosed) };
-        let sws=stream.window_size;
-        let min=if cws.clone()<sws{cws.clone()}else{sws} as usize;
-        let min=if mws<min{mws}else{min};
-        if min==0{
-            Ok(Some(payload.to_vec()))
-        } else if payload.len()<min{
-            let fb=create::raw_frame(stream_id, 0, if last{1}else{0}, payload, EMPTY)?;
+        drop(streams);
+        
+        
+        if payload.is_empty()&&last { 
+            let fb=create::raw_frame(stream_id, 0, 1, EMPTY, EMPTY)?;
             self.write(&fb).await?;
-            stream.window_size-=payload.len() as u32;
-            *cws-=payload.len() as u32;
-            Ok(None)
-        } else {
-            let pl=&payload[..min];
-            let rest=&payload[min..];
-            let fb=create::raw_frame(stream_id, 0, 0, pl, EMPTY)?;
-            self.write(&fb).await?;
-            stream.window_size-=pl.len() as u32; // sync safety instead of setting to 0
-            *cws-=pl.len() as u32;
-            Ok(Some(rest.to_vec()))
+            return Ok(());
+        } else if payload.is_empty(){
+            return Err(HttpError::Invalid);
+        }
+        
+        // let mut done = false;
+        let mut min=if *cws<mfs as u32 { *cws } else { mfs as u32 };
+        let mut sent = 0;
+        loop{
+            if min==0{
+                
+            } else if payload.len()-sent > min as usize {
+                
+                let slice = &payload[sent..sent+min as usize];
+                let fb = create::raw_frame(stream_id, 0, 0, slice, EMPTY)?;
+                self.write(&fb).await?;
+                *cws -= slice.len() as u32;
+                sent += slice.len();
+
+            } else if payload.len()-sent < min as usize {
+                
+                let slice = &payload[sent..];
+                let fb = create::raw_frame(stream_id, 0, if last{1}else{0}, slice, EMPTY)?;
+                self.write(&fb).await?;
+                *cws -= slice.len() as u32;
+                // sent += slice.len();
+                return Ok(());
+
+            }
+
+            match self.readone().await{
+                Some(frame)=>{
+                    match frame.ftype{
+                        Http2FrameType::Headers => {
+                            let mut que = self.que.lock().await;
+                            que.push_back(frame);
+                        },
+                        _ => { 
+                            self.handle_frames(vec![frame]).await?;
+                        },
+                    }
+                },
+                None=>return Err(HttpError::Invalid),
+            }
+
+            min=if *cws<mfs as u32 { *cws } else { mfs as u32 };
         }
     }
     pub async fn send_headers(&self,last: bool,end_head: bool,stream_id: u32,headers: Vec<(&[u8], &[u8])>)->HttpResult<()>{
