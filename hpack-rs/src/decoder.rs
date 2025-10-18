@@ -233,6 +233,7 @@ pub enum StringDecodingError {
 #[derive(Clone)]
 #[derive(Debug)]
 pub enum DecoderError {
+    Invalid,
     HeaderIndexOutOfBounds,
     IntegerDecodingError(IntegerDecodingError),
     StringDecodingError(StringDecodingError),

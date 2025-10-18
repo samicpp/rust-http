@@ -16,9 +16,14 @@ pub struct Http2Handler<'a,S:Stream>{ // simplified handler, not the actual sess
 
 impl<'a,S:Stream> Http2Handler<'a,S>{
     pub fn new(stream_id: u32, session: Arc<Http2Session<'a,S>>)->Self{
+        let info = session.addr.clone();
         Self { 
             stream_id, session,
-            client: HttpClient::default(),
+            client: HttpClient {
+                version: "HTTP/2".to_owned(),
+                info,
+                ..Default::default()
+            },
             headers: HashMap::new(),
             head_closed: false,
             status: 200,
@@ -77,9 +82,26 @@ impl<'a,S:Stream> HttpSocket for Http2Handler<'a,S>{
     }
     
     async fn read_client(&mut self)->Result<&HttpClient, HttpError>{ 
-        let mut streams=self.session.streams.lock().await;
-        let stream=if let Some(s)=streams.get_mut(&self.stream_id){ s } else{ return Err(HttpError::StreamDoesntExist) };
-        self.client=stream.client.clone();
+        // let mut streams=self.session.streams.lock().await;
+        let stream=if let Some(s)=self.session.streams.get_mut(&self.stream_id){ s } else{ return Err(HttpError::StreamDoesntExist) };
+        
+        for (n,v) in &stream.headers{
+            let name=String::from_utf8_lossy(&n).to_string();
+            let value=String::from_utf8_lossy(&v).to_string();
+            if name == ":method" { self.client.method = value }
+            // else if name == ":scheme" {  }
+            else if name == ":authority" { self.client.host = value }
+            else if name == ":path" { self.client.path = value }
+            else if !name.starts_with(":"){
+                if let Some(hsv)=self.client.headers.get_mut(&name){
+                    hsv.push(value)
+                } else {
+                    self.client.headers.insert(name, vec![value]);
+                }
+            }
+        }
+        self.client.read = stream.end_headers;
+
         Ok(&self.client)
     }
     async fn get_client(&mut self)->Result<&HttpClient, HttpError>{ 
@@ -100,7 +122,7 @@ impl<'a,S:Stream> HttpSocket for Http2Handler<'a,S>{
         };
 
         // let head=self.session.hpack_encode(headers).await;
-        self.session.send_headers(false, true, self.stream_id, headers).await?;
+        self.session.send_headers(false, self.stream_id, headers).await?;
         Ok(())
     }
     async fn close(&mut self, bytes: &[u8])->HttpResult<()>{ 

@@ -8,7 +8,7 @@ use sha1::{Sha1, Digest};
 
 use crate::{common::{ 
     Compression, HttpClient, HttpConstructor, HttpError, HttpResult, HttpSocket, HttpType, Stream
-}, http2::{Http2FrameSettings, Http2Session}};
+}, http2::{Http2FrameSettings, Http2Session, Http2Stream}};
 use crate::websocket::{WebSocket,MAGIC};
 // use crate::common::HttpSocket;
 
@@ -215,8 +215,32 @@ impl<'a,S:Stream> Http1Socket<S>{
         };
         
         self.socket.write_all(H2C_UPGRADE).await?;
-        let ses=Http2Session::new(self.socket, client.info.clone());
-        ses.add_stream(1, client, settings).await?;
+
+        let headers = {
+            let sheaders = client.headers.clone();
+            let mut phb = Vec::new();
+            
+            phb.push((b":authority".to_vec(), client.host.as_bytes().to_vec()));
+            phb.push((b":method".to_vec(), client.method.as_bytes().to_vec()));
+            phb.push((b":path".to_vec(), client.path.as_bytes().to_vec()));
+
+            for (h, vs) in sheaders {
+                for v in vs{
+                    phb.push((h.as_bytes().to_vec(), v.as_bytes().to_vec()));
+                }
+            } 
+
+            phb
+        };
+        
+        let ses=Http2Session::new(self.socket, client.info.clone(), settings);
+        let stream = Http2Stream {
+            stream_id: 1,
+            headers,
+            body: client.body,
+            ..Http2Stream::empty()
+        };
+        ses.add_stream(stream).await?;
         Ok(ses)
     }
     pub async fn websocket(mut self)->HttpResult<WebSocket<S>>{

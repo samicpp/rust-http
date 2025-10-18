@@ -11,6 +11,8 @@ async-compression = { version = "0.4.25", features = ["gzip","tokio"] }
 hpack = { path = "./hpack-rs" }
 base64 = "0.22.1"
 sha1 = "0.10.6"
+# whirlwind = "0.1.1"
+dashmap = "6.1.0"
 # ls-qpack = "0.1.4"
 # quinn = "0.11.9"    #  easier / simpler.  i will be using this
 # quiche = "0.24.6"   #  manual + manual async implementation
