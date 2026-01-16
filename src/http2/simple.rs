@@ -1,10 +1,10 @@
 use std::{collections::HashMap, sync::Arc, /*time::Duration*/};
 
-use crate::{common::{HttpClient, HttpError, HttpResult, HttpSocket, HttpType, Stream}, http2::Http2Session};
+use crate::{common::{HttpClient, HttpError, HttpResult, HttpSocket, HttpType, HttpVersion, Stream}, http2::Http2Session};
 
-pub struct Http2Handler<'a,S:Stream>{ // simplified handler, not the actual session
+pub struct Http2Handler<S:Stream>{ // simplified handler, not the actual session
     pub stream_id: u32,
-    pub session: Arc<Http2Session<'a,S>>,
+    pub session: Arc<Http2Session<S>>,
     
     client: HttpClient,
     headers: HashMap<String,Vec<String>>,
@@ -14,13 +14,14 @@ pub struct Http2Handler<'a,S:Stream>{ // simplified handler, not the actual sess
     closed: bool,
 }
 
-impl<'a,S:Stream> Http2Handler<'a,S>{
-    pub fn new(stream_id: u32, session: Arc<Http2Session<'a,S>>)->Self{
+impl<S:Stream> Http2Handler<S>{
+    pub fn new(stream_id: u32, session: Arc<Http2Session<S>>)->Self{
         let info = session.addr.clone();
         Self { 
             stream_id, session,
             client: HttpClient {
-                version: "HTTP/2".to_owned(),
+                version: HttpVersion::Http2,
+                version_string: "HTTP/2".to_owned(),
                 info,
                 ..Default::default()
             },
@@ -33,7 +34,7 @@ impl<'a,S:Stream> Http2Handler<'a,S>{
 }
 
 #[async_trait::async_trait]
-impl<'a,S:Stream> HttpSocket for Http2Handler<'a,S>{
+impl<S:Stream> HttpSocket for Http2Handler<S>{
     type Stream = S;
     fn set_header(&mut self, name: &str, value: &str)->HttpResult<()>{
         if self.head_closed { return Err(HttpError::HeadersSent) };
@@ -147,14 +148,15 @@ impl<'a,S:Stream> HttpSocket for Http2Handler<'a,S>{
         self.session.send_rst_stream(self.stream_id, 0xd).await?;
         Err(HttpError::NotSupported)
     }
-    fn r#type(&self)->HttpType{
+    
+    fn get_type(&self)->HttpType{
         HttpType::Http2
     }
-    // fn get_http2(self)->Arc<Http2Session<Self::Stream>> {
-    //     self.session
-    // }
     fn get_http1(self)->crate::http1::Http1Socket<Self::Stream> {
         panic!("cannot convert http2 to http1")
     }
+    // fn get_http2_stream(self)->Http2Handler<'a, Self::Stream> {
+    //     self
+    // }
 }
 

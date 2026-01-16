@@ -7,7 +7,7 @@ use base64::{engine::general_purpose, Engine as _};
 use sha1::{Sha1, Digest};
 
 use crate::{common::{ 
-    Compression, HttpClient, HttpConstructor, HttpError, HttpResult, HttpSocket, HttpType, Stream
+    Compression, HttpClient, HttpConstructor, HttpError, HttpResult, HttpSocket, HttpType, HttpVersion, Stream
 }, http2::{Http2FrameSettings, Http2Session, Http2Stream}};
 use crate::websocket::{WebSocket,MAGIC};
 // use crate::common::HttpSocket;
@@ -16,10 +16,14 @@ pub const H2C_UPGRADE: &'static [u8] = b"HTTP/1.1 101 Switching Protocols\r\nCon
 pub const WS_UPGRADE: &'static [u8] = b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ";
 
 pub struct Http1Socket<S:Stream>{
+    read_first: bool,
+    read_head: bool,
+    read_body: bool,
+
     closed: bool,
     head_closed: bool,
 
-    buff: Vec<u8>,
+    // buffer: Vec<u8>,
     headers: HashMap<String,Vec<String>>,
     socket: S,
     compression: Compression,
@@ -61,7 +65,7 @@ impl<'a,S:Stream> Http1Socket<S>{
         // self.buff.extend_from_slice(&buff);
         Ok(r)
     }*/
-    async fn read_all(&mut self)->io::Result<Vec<u8>>{
+    /*async fn read_all(&mut self)->io::Result<Vec<u8>>{
         let mut buf=[0u8; 4096];
         let mut total = Vec::new();
         loop{
@@ -78,108 +82,209 @@ impl<'a,S:Stream> Http1Socket<S>{
         let read=self.read_all().await?;
         self.buff.extend_from_slice(&read);
         Ok(read.len())
+    }*/
+    async fn read_until_byte(&mut self, stop: u8)->io::Result<Vec<u8>>{
+        // needs optimizing
+        let mut buf = [0u8; 1];
+        let mut buff = vec![0u8; 0];
+        
+
+        loop{
+            let r = self.socket.read(&mut buf).await?;
+            buff.extend_from_slice(&buf[..r]);
+
+            if r == 0 || buf[0] == stop { 
+                break
+            }
+        }
+
+        Ok(buff)
     }
+
     pub async fn update_client(&mut self)->std::io::Result<()>{
         if self.closed { return Err(io::Error::new(io::ErrorKind::ConnectionAborted,"connection isnt open")); };
         
-        let _size = self.read_new().await?;
-        let slice = &self.buff;//[..size];
-        // let string = match str::from_utf8(slice) { Ok(s)=>s, Err(_)=>"" };
-        // let parts = string.split("\r\n\r\n").collect::<Vec<&str>>();
-
-        // if parts.len()<1 { return Err(io::Error::new(io::ErrorKind::Other, "invalid client data")) };
-        if slice.is_empty() { return Err(io::Error::new(io::ErrorKind::InvalidData,"could read client bytes")) }
-
-        let mut head_part=Vec::<u8>::new();
-        let mut body_part=Vec::<u8>::new();
-
-        if let Some(seperator)=slice.windows(4).position(|window| window == b"\r\n\r\n"){
-            let bod_start=seperator+4;
-            head_part.extend_from_slice(&slice[..seperator]);
-            body_part.extend_from_slice(&slice[bod_start..]);
-        } else {
-            head_part.extend_from_slice(&slice);
-        };
-
-        let head_part=head_part;
-        let body_part=body_part;
-
-        let head_string=match str::from_utf8(&head_part){Ok(s)=>s, Err(_)=>""};
-
-
-        let mut headraw=head_string.split("\r\n").collect::<Vec<&str>>();
-
-        // dbg!(self.buff.len());
-        // dbg!(slice.len());
-        // dbg!(head_part.len()); 
-        // dbg!(body_part.len()); 
-        // dbg!(&head_string); 
-        // dbg!(&headraw); 
-
-        if headraw.len()<2 { return Err(io::Error::new(io::ErrorKind::Other, "invalid client data")) };
-
-        let head=headraw.remove(0).split(" ").collect::<Vec<&str>>();
-        let headers = headraw;
-
-        self.client.method=head[0].to_owned();
-        self.client.path=head[1].to_owned();
-        self.client.version=head[2].to_owned();
-
-        self.client.headers.clear();
-
-        for sheader in headers {
-            let harr = sheader.split(": ").collect::<Vec<&str>>();
-            if harr.len()<2 { continue };
-            let k=harr[0].to_lowercase(); let v=harr[1];
-
-            if let Some(ve)=self.client.headers.get_mut(&k){
-                ve.push(v.to_owned());
-            } else {
-                self.client.headers.insert(k.clone(), vec![v.to_owned()]);
-            }
-
-            if k=="host"{
-                self.client.host=v.to_owned();
-            }
-        }
-
-        self.client.body.clear();
-        let body=body_part;//if let Some(bod)=parts.get(1) { bod.as_bytes() } else { eprintln!("no body {:?}",parts); "".as_bytes() };
-        // self.client.body.extend_from_slice(body);
-        if self.client.headers.contains_key("content-length"){
-            self.client.body.extend_from_slice(&body);
-        } else if let Some(_)=self.client.headers.get("transfer-encoding"){
-            let mut i: usize=0; let mut size: usize=0; let mut read: usize=0;
-            let mut hex=String::new(); let mut buff=Vec::<u8>::new();
-            while i<body.len(){
-                if size>read{
-                    buff.push(body[i+read]);
-                    read+=1;
-                    continue;
-                } else if size==read {
-                    i+=size+2;
-                    hex="".to_owned()  ;
-                    read=0;
-                }
-
-                let cur=&body[i];
-
-                if *cur==b'\r'{
-                    if let Ok(nsize)=usize::from_str_radix(&hex, 16){
-                        size=nsize;
-                        i+=1;
-                    } else {
-                        break;
-                    };
-                } else {
-                    hex+=&(cur.to_owned() as char).to_string();
-                }
-                i+=1;
-            }
+        if !self.read_first{
+            let first = self.read_until_byte(b'\n').await?;
+            let string = String::from_utf8_lossy(&first);
+            let mpv: Vec<&str> = string.splitn(3, ' ').collect();
             
+            self.read_first = true;
+            self.client.method = mpv[0].to_string();
+
+            if mpv.len() < 2{
+                self.client.valid = false;
+                self.read_head = true;
+                self.read_body = true;
+            }
+            else if mpv.len() == 2{
+                self.client.path = mpv[1].to_string();
+                self.client.version = HttpVersion::Http09;
+                self.read_head = true;
+                self.read_body = true;
+            }
+            else if mpv[2].eq_ignore_ascii_case("http/1.0"){
+                self.client.path = mpv[1].to_string();
+                self.client.version_string = mpv[2].to_string();
+                self.client.version = HttpVersion::Http10;
+            }
+            else if mpv[2].eq_ignore_ascii_case("http/1.1"){
+                self.client.path = mpv[1].to_string();
+                self.client.version_string = mpv[2].to_string();
+                self.client.version = HttpVersion::Http11;
+            }
+            else{
+                self.client.path = mpv[1].to_string();
+                self.client.version_string = mpv[2].to_string();
+                self.client.version = HttpVersion::Unknown;
+            }
+        }
+        else if !self.head_closed{
+            let head = self.read_until_byte(b'\n').await?;
+            let string = String::from_utf8_lossy(&head);
+            let headval: Vec<&str> = string.splitn(2, ':').collect();
+            let header = headval[0].trim().to_lowercase();
+
+            if headval.len() < 2{
+                self.head_closed = true;
+            }
+            else{
+                if let Some(headers)=self.client.headers.get_mut(&header){
+                    headers.push(headval[1].trim().to_string());
+                } else {
+                    self.client.headers.insert(header, vec![headval[1].trim().to_string()]);
+                }
+            }
+        }
+        else if !self.read_body{
+            // let cl = self.client.headers.get("content-length");
+            // let te = self.client.headers.get("transfer-encoding");
+
+            if let Some(cl) = self.client.headers.get("content-length") && let Ok(len) = cl[0].parse::<usize>(){
+
+                self.client.body.resize(len, 0);
+                self.socket.read_exact(&mut self.client.body).await?;
+
+                self.read_body = true
+            }
+            else if let Some(te) = self.client.headers.get("transfer-encoding") && te[0].contains("chunked") {
+                
+                let chunklen = self.read_until_byte(b'\n').await?;
+                let string = String::from_utf8_lossy(&chunklen);
+                let len = match usize::from_str_radix(string.trim(), 16) { Ok(s) => s, Err(_) => 0, };
+                if len == 0{
+                    self.read_body = true;
+                }
+                else{
+                    let ol = self.client.body.len();
+                    self.client.body.resize(self.client.body.len() + len, 0);
+                    self.socket.read_exact(&mut self.client.body[ol..]).await?;
+                }
+            }
+            else{
+                self.read_body = true
+            }
+
         }
 
-        self.client.read=true;
+        // let _size = self.read_new().await?;
+        // let slice = &self.buff;//[..size];
+        // // let string = match str::from_utf8(slice) { Ok(s)=>s, Err(_)=>"" };
+        // // let parts = string.split("\r\n\r\n").collect::<Vec<&str>>();
+
+        // // if parts.len()<1 { return Err(io::Error::new(io::ErrorKind::Other, "invalid client data")) };
+        // if slice.is_empty() { return Err(io::Error::new(io::ErrorKind::InvalidData,"could read client bytes")) }
+
+        // let mut head_part=Vec::<u8>::new();
+        // let mut body_part=Vec::<u8>::new();
+
+        // if let Some(seperator)=slice.windows(4).position(|window| window == b"\r\n\r\n"){
+        //     let bod_start=seperator+4;
+        //     head_part.extend_from_slice(&slice[..seperator]);
+        //     body_part.extend_from_slice(&slice[bod_start..]);
+        // } else {
+        //     head_part.extend_from_slice(&slice);
+        // };
+
+        // let head_part=head_part;
+        // let body_part=body_part;
+
+        // let head_string=match str::from_utf8(&head_part){Ok(s)=>s, Err(_)=>""};
+
+
+        // let mut headraw=head_string.split("\r\n").collect::<Vec<&str>>();
+
+        // // dbg!(self.buff.len());
+        // // dbg!(slice.len());
+        // // dbg!(head_part.len()); 
+        // // dbg!(body_part.len()); 
+        // // dbg!(&head_string); 
+        // // dbg!(&headraw); 
+
+        // if headraw.len()<2 { return Err(io::Error::new(io::ErrorKind::Other, "invalid client data")) };
+
+        // let head=headraw.remove(0).split(" ").collect::<Vec<&str>>();
+        // let headers = headraw;
+
+        // self.client.method=head[0].to_owned();
+        // self.client.path=head[1].to_owned();
+        // self.client.version=head[2].to_owned();
+
+        // self.client.headers.clear();
+
+        // for sheader in headers {
+        //     let harr = sheader.split(": ").collect::<Vec<&str>>();
+        //     if harr.len()<2 { continue };
+        //     let k=harr[0].to_lowercase(); let v=harr[1];
+
+        //     if let Some(ve)=self.client.headers.get_mut(&k){
+        //         ve.push(v.to_owned());
+        //     } else {
+        //         self.client.headers.insert(k.clone(), vec![v.to_owned()]);
+        //     }
+
+        //     if k=="host"{
+        //         self.client.host=v.to_owned();
+        //     }
+        // }
+
+        // self.client.body.clear();
+        // let body=body_part;//if let Some(bod)=parts.get(1) { bod.as_bytes() } else { eprintln!("no body {:?}",parts); "".as_bytes() };
+        // // self.client.body.extend_from_slice(body);
+        // if self.client.headers.contains_key("content-length"){
+        //     self.client.body.extend_from_slice(&body);
+        // } else if let Some(_)=self.client.headers.get("transfer-encoding"){
+        //     let mut i: usize=0; let mut size: usize=0; let mut read: usize=0;
+        //     let mut hex=String::new(); let mut buff=Vec::<u8>::new();
+        //     while i<body.len(){
+        //         if size>read{
+        //             buff.push(body[i+read]);
+        //             read+=1;
+        //             continue;
+        //         } else if size==read {
+        //             i+=size+2;
+        //             hex="".to_owned()  ;
+        //             read=0;
+        //         }
+
+        //         let cur=&body[i];
+
+        //         if *cur==b'\r'{
+        //             if let Ok(nsize)=usize::from_str_radix(&hex, 16){
+        //                 size=nsize;
+        //                 i+=1;
+        //             } else {
+        //                 break;
+        //             };
+        //         } else {
+        //             hex+=&(cur.to_owned() as char).to_string();
+        //         }
+        //         i+=1;
+        //     }
+            
+        // }
+
+        // self.client.read=true;
 
         Ok(())
     }
@@ -197,7 +302,7 @@ impl<'a,S:Stream> Http1Socket<S>{
     }
     fn _get_compression(&self)->Compression{ self.compression.clone() }
     
-    pub async fn h2c(mut self)->HttpResult<Http2Session<'a,S>>{
+    pub async fn h2c(mut self)->HttpResult<Http2Session<S>>{
         let client=self.client;
         let settings=if let Some(s)=client.headers.get("http2-settings"){
             // let s=(&s[0]).to_owned();
@@ -383,13 +488,14 @@ impl<S:Stream> HttpSocket for Http1Socket<S>{
     async fn websocket(self)->HttpResult<WebSocket<S>> {
         self.websocket().await
     }
-    fn r#type(&self)->HttpType{
+    
+    fn get_type(&self)->HttpType{
         HttpType::Http1
     }
     fn get_http1(self)->Http1Socket<Self::Stream> {
         self
     }
-    // fn get_http2(&self)->std::sync::Arc<Http2Session<Self::Stream>> {
+    // fn get_http2_stream(self)->Http2Handler<'static, Self::Stream> {
     //     panic!("cannot cast http1 to http2")
     // }
 }
@@ -397,11 +503,14 @@ impl<S:Stream> HttpSocket for Http1Socket<S>{
 impl<S:Stream> HttpConstructor<S> for Http1Socket<S>{
     fn new(socket: S, addr: std::net::SocketAddr)->Self{
         /*let mut s=*/ Self { 
+            read_first: false,
+            read_head: false,
+            read_body: false,
+
             closed: false,
             head_closed: false,
 
-            socket: socket, 
-            buff: vec![0_u8; 0], 
+            socket: socket,
             headers: HashMap::new(), 
             compression: Compression::Plain,
 

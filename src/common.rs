@@ -8,6 +8,7 @@ use std::fmt;
 // use std::sync::Arc;
 
 use crate::http1::Http1Socket;
+// use crate::http2::Http2Handler;
 // use crate::http2::Http2Session;
 use crate::websocket::WebSocket;
 // use std::pin::Pin;
@@ -36,9 +37,9 @@ pub trait HttpSocket{
 
     async fn websocket(self)->HttpResult<WebSocket<Self::Stream>>;
 
-    fn r#type(&self)->HttpType;
+    fn get_type(&self)->HttpType;
     fn get_http1(self)->Http1Socket<Self::Stream>;
-    // fn get_http2(&self)->Arc<Http2Session<Self::Stream>>;
+    // fn get_http2_stream(self)->Http2Handler<'_,Self::Stream>;
 }
 
 pub type DynSocket=Box<dyn HttpSocket<Stream = dyn Stream>>;
@@ -51,11 +52,13 @@ pub trait HttpConstructor<S:Stream>{
 pub struct HttpClient{
     // indicates wether data is default or modified
     pub read: bool,
+    pub valid: bool,
     pub info: std::net::SocketAddr,
 
     pub path: String,
     pub method: String,
-    pub version: String,
+    pub version: HttpVersion,
+    pub version_string: String,
 
     pub host: String,
     pub headers: std::collections::HashMap<String,Vec<String>>,
@@ -66,10 +69,12 @@ impl HttpClient{
     pub fn empty()->Self{
         Self {
             read: false,
+            valid: true,
             info: std::net::SocketAddr::V4(std::net::SocketAddrV4::new(std::net::Ipv4Addr::new(0,0,0,0),0)),
             path: String::new(),
             method: String::new(),
-            version: String::new(),
+            version: HttpVersion::Unknown,
+            version_string: String::new(),
             host: String::new(),
             headers: HashMap::new(),
             body: Vec::new(),
@@ -81,10 +86,12 @@ impl Default for HttpClient{
     fn default() -> Self {
         Self {
             read: false,
+            valid: true,
             info: std::net::SocketAddr::V4(std::net::SocketAddrV4::new(std::net::Ipv4Addr::new(0,0,0,0),0)),
             path: "/".to_owned(),
             method: "NILL".to_owned(),
-            version: String::new(),
+            version: HttpVersion::Unknown,
+            version_string: String::new(),
             host: "about:blank".to_owned(),
             headers: HashMap::new(),
             body: Vec::new(),
@@ -102,7 +109,33 @@ pub enum Compression{
 pub enum HttpType{
     Http1,
     Http2,
+    Http3,
 }
+
+#[derive(Debug,Clone,Copy,PartialEq)]
+pub enum HttpVersion{
+    Unknown,
+
+    Http09,
+    Http10,
+    Http11,
+    Http2,
+    Http3,
+}
+
+impl fmt::Display for HttpVersion{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match &self{
+            Self::Unknown => "Unknown",
+            Self::Http09 => "HTTP/0.9",
+            Self::Http10 => "HTTP/1.0",
+            Self::Http11 => "HTTP/1.1",
+            Self::Http2  => "HTTP/2",
+            Self::Http3  => "HTTP/3",
+        })
+    }
+}
+
 // ## Generic streams
 // #[allow(async_fn_in_trait)]
 // pub trait NetStream{

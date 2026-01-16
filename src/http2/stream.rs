@@ -23,12 +23,12 @@ const EMPTY: &'static [u8] = &[];
 
 // TODO: read and send big header continuation frames & add integrated flow control in send_data & send window size update on client read 
 
-pub struct Http2Session<'a,S:Stream>{
+pub struct Http2Session<S:Stream>{
     netr: Mutex<ReadHalf<S>>, netw: Mutex<WriteHalf<S>>,
     pub addr: SocketAddr,
     
-    pub hpackd: SMutex<hpack::decoder::Decoder<'a>>, 
-    pub hpacke: SMutex<hpack::encoder::Encoder<'a>>,
+    pub hpackd: SMutex<hpack::decoder::Decoder<'static>>, 
+    pub hpacke: SMutex<hpack::encoder::Encoder<'static>>,
 
     pub settings: Mutex<Http2FrameSettings>,
     pub goaway: AtomicBool,
@@ -78,7 +78,7 @@ impl Http2Stream{
     }
 }
 
-impl<'a,S:Stream> Http2Session<'a,S>{
+impl<S:Stream> Http2Session<S>{
     pub fn new(socket: S, addr: SocketAddr, initial_settings: Http2FrameSettings)->Self {
         let (read,write)=tokio::io::split(socket);
         let ws= if let Some(s)=initial_settings.initial_window_size{s}else{16384};
@@ -533,7 +533,7 @@ impl<'a,S:Stream> Http2Session<'a,S>{
     }
 }
 
-impl<'a,S:Stream> HttpConstructor<S> for Http2Session<'a,S>{
+impl<S:Stream> HttpConstructor<S> for Http2Session<S>{
     fn new(socket: S, addr: SocketAddr)->Self {
         Self::new(socket,addr,Http2FrameSettings::default())
     }
